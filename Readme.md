@@ -1,0 +1,2 @@
+ProjectName: StudySteady
+TeamName: Thrive
