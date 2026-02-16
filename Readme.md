@@ -366,3 +366,167 @@ There is a clear boundary:
 - Developers ensure application correctness.
 
 This separation allows Kubernetes to provide reliable automation while keeping responsibility clearly divided.
+
+
+#  CI/CD Pipeline Execution Model & Responsibility Boundaries
+
+
+## CI/CD Execution Model (Big Picture)
+
+```
+Code Change
+   ↓
+CI Pipeline (Build & Test)
+   ↓
+Artifact Creation (Docker Image)
+   ↓
+CD Pipeline (Deploy)
+   ↓
+Infrastructure (Kubernetes / Cloud)
+```
+
+Each stage has a clear responsibility and ownership boundary.
+
+---
+
+## Continuous Integration (CI)
+
+**Purpose:** Validate code before merge.
+
+### CI Responsibilities
+
+* Checkout source code
+* Install dependencies
+* Run unit tests
+* Run lint/static analysis
+* Build Docker image
+* Tag image
+* Push image to container registry
+
+### Key Rule
+
+> CI answers: **“Is this code safe to merge?”**
+
+### Triggered By
+
+* Pull Requests
+* Commits to branches
+
+---
+
+## Continuous Deployment (CD)
+
+**Purpose:** Deploy already validated artifacts.
+
+### CD Responsibilities
+
+* Pull pre-built Docker image
+* Update Kubernetes manifests
+* Apply manifests to cluster
+* Trigger rolling updates
+* Manage rollbacks
+
+### Key Rule
+
+> CD answers: **“How do we safely run this version?”**
+
+ CD does **NOT** rebuild code. It deploys artifacts created by CI.
+
+---
+
+##  Where Actions Happen
+
+| Action                 | Responsibility   |
+| ---------------------- | ---------------- |
+| Writing business logic | Application Code |
+| Writing unit tests     | Application Code |
+| Running tests          | CI               |
+| Building Docker image  | CI               |
+| Tagging image          | CI               |
+| Pushing to registry    | CI               |
+| Updating K8s manifests | CD               |
+| Applying manifests     | CD               |
+| Restarting failed pods | Kubernetes       |
+
+---
+
+## 🏗 Responsibility Boundaries
+
+### 1️⃣ Application Code
+
+* Implements features
+* Defines tests
+* Does NOT deploy itself
+
+### 2️⃣ CI Pipeline
+
+* Validates code
+* Builds artifacts
+* Fails fast on errors
+
+### 3️⃣ CD Pipeline
+
+* Deploys artifacts
+* Updates environments
+* Handles rollouts
+
+### 4️⃣ Infrastructure (Kubernetes)
+
+* Runs workloads
+* Maintains desired state
+* Self-heals failures
+
+---
+
+##  Why Separation Matters
+
+* Prevents accidental production deployments
+* Enables safe Pull Request reviews
+* Reduces blast radius of errors
+* Makes rollbacks predictable
+* Improves system reliability
+
+---
+
+## Safe Pipeline Modifications
+
+Pipeline changes must be:
+
+* Small
+* Reviewed carefully
+* Intentionally scoped
+* Version controlled
+
+### Impact Awareness
+
+| Change Type            | Affects       |
+| ---------------------- | ------------- |
+| Test step change       | CI validation |
+| Build step change      | Artifacts     |
+| Deployment step change | Live systems  |
+
+---
+
+## Common Misconceptions
+
+| Incorrect Thinking           | Correct Model              |
+| ---------------------------- | -------------------------- |
+| CI deploys code              | CI validates code          |
+| CD rebuilds app              | CD deploys artifacts       |
+| Pipelines replace Kubernetes | Kubernetes manages runtime |
+
+---
+
+## Interaction with Kubernetes
+
+CD applies manifests to Kubernetes.
+
+Kubernetes:
+
+* Schedules pods
+* Performs rolling updates
+* Restarts failed containers
+* Maintains desired state
+
+Pipelines orchestrate actions.
+Kubernetes executes runtime behavior.
