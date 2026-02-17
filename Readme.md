@@ -758,3 +758,94 @@ Common issues and fixes are documented in `docs/troubleshooting.md` and include:
 - [ ] Sample Kubernetes deployment and service manifest files
 - [ ] README updated with final versions and dates
 - [ ] Git commit and Pull Request link documented
+
+# High and Low Fidelity Architecture
+
+## Overview
+
+**Architecture Design** is a critical phase in DevOps and system planning. It helps us visualize and understand how different components interact before implementation. There are two main levels of architectural detail:
+
+1. **High Fidelity Design (HFD)** - Detailed, comprehensive architecture
+2. **Low Level Design (LLD)** - Simplified, high-level overview
+
+---
+
+## High Fidelity Design (HFD)
+
+**Purpose:** Detailed representation of the complete system architecture.
+
+### Characteristics
+
+- **Complete Detail:** Shows all components, services, and their interactions
+- **Technical Depth:** Includes specific technologies, databases, caching layers
+- **Implementation Ready:** Serves as a blueprint for developers and DevOps engineers
+- **Component Relationships:** Clearly shows how each service communicates
+- **Error Handling:** Includes failover mechanisms and backup strategies
+
+### Benefits
+
+ Provides precise implementation guidance  
+ Identifies potential bottlenecks  
+ Helps with capacity planning  
+ Enables thorough testing strategy  
+
+### HFD Diagram
+
+![High Fidelity Design Diagram](screenshots/HFD_diagram.png)
+
+---
+
+## Low Level Design (LLD)
+
+**Purpose:** Simplified, high-level overview of the system architecture.
+
+### Characteristics
+
+- **High-Level View:** Shows only critical components and main flows
+- **Simplified Relationships:** Abstracts implementation details
+- **Quick Understanding:** Easy to grasp for stakeholders
+- **Decision Making:** Useful for architectural decisions and trade-offs
+- **Business Focus:** Emphasizes business capabilities over technical details
+
+### Benefits
+
+ Easy to communicate to non-technical stakeholders  
+ Quick overview for decision makers  
+ Useful for initial planning phases  
+ Helps identify major system boundaries  
+
+### LLD Diagram
+
+![Low Level Design Diagram](screenshots/LLD_diagram.png)
+
+---
+
+## Relationship Between HFD and LLD
+
+| Aspect | HFD | LLD |
+|--------|-----|-----|
+| Detail Level | High | Low |
+| Audience | Developers, DevOps | Stakeholders, Managers |
+| Purpose | Implementation | Planning & Communication |
+| Complexity | Complex | Simple |
+| Use Case | Building | Decision Making |
+
+---
+
+## When to Use Each
+
+### Use HFD When
+- Building and implementing the system
+- Planning detailed infrastructure
+- Designing CI/CD pipelines
+- Conducting code reviews
+- Planning disaster recovery
+
+### Use LLD When
+- Presenting to business stakeholders
+- Making high-level architectural decisions
+- Planning budgets and resources
+- Onboarding new team members
+- Creating project proposals
+
+---
