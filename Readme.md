@@ -530,3 +530,231 @@ Kubernetes:
 
 Pipelines orchestrate actions.
 Kubernetes executes runtime behavior.
+
+# DevOps Workstation Setup – Sprint #3 (Windows)
+
+## 1. System Overview
+
+- **Operating System:** Windows 10/11
+- **Shell:** PowerShell
+- **Virtualization:** WSL2 and Docker Desktop
+
+## 2. Installed DevOps Tools
+
+### 2.1 Git
+
+- **Installation Method:** Git for Windows (`git-scm.com`)
+- **Verification Command:**
+
+```powershell
+git --version
+git config --list
+```
+
+- **Sample Output:**
+
+```text
+git version 2.45.0.windows.1
+user.name=Your Name
+user.email=your.email@example.com
+```
+
+---
+
+### 2.2 Docker Desktop
+
+- **Installation Method:** Docker Desktop for Windows (`docker.com/products/docker-desktop`)
+- **Verification Commands:**
+
+```powershell
+docker version
+docker info
+```
+
+- **Sample Output (excerpt):**
+
+```text
+Client: Docker Engine - Community
+Server: Docker Desktop
+ Server Version: 27.0.0
+```
+
+---
+
+### 2.3 Kubernetes (Docker Desktop)
+
+- **Installation Method:** Enable Kubernetes in Docker Desktop → Settings → Kubernetes
+- **Verification Commands:**
+
+```powershell
+kubectl config current-context
+kubectl get nodes
+kubectl cluster-info
+```
+
+- **Sample Output:**
+
+```text
+CURRENT CONTEXT: docker-desktop
+
+NAME             STATUS   ROLES           AGE   VERSION
+docker-desktop   Ready    control-plane   10m   v1.29.0
+```
+
+
+---
+
+### 2.4 kubectl
+
+- **Installation Method:** `winget install Kubernetes.kubectl`
+- **Verification Command:**
+
+```powershell
+kubectl version --client
+```
+
+- **Sample Output:**
+
+```text
+Client Version: v1.29.0
+```
+
+---
+
+### 2.5 Helm
+
+- **Installation Method:** `winget install Helm.Helm`
+- **Verification Commands:**
+
+```powershell
+helm version
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo list
+```
+
+- **Sample Output:**
+
+```text
+version.BuildInfo{Version:"v3.14.0", ...}
+
+NAME    URL
+bitnami https://charts.bitnami.com/bitnami
+```
+
+---
+
+### 2.6 curl and Supporting CLI Tools
+
+- **Installation Method:**
+  - `curl` via built-in Windows or `winget install curl.curl`
+  - `jq` via `winget install jqlang.jq`
+- **Verification Commands:**
+
+```powershell
+curl --version
+jq --version
+```
+
+- **Sample Output:**
+
+```text
+curl 8.5.0 (Windows) ...
+jq-1.7
+```
+
+---
+
+## 3. Sample Kubernetes Deployment
+
+This section documents a simple application deployed to the local Kubernetes cluster to prove functional readiness.
+
+### 3.1 Namespace
+
+File: `k8s/sample-namespace.yaml`
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-lab
+```
+
+Apply:
+
+```powershell
+kubectl apply -f k8s/sample-namespace.yaml
+kubectl get ns
+```
+
+### 3.2 Deployment and Service
+
+File: `k8s/sample-deployment.yaml`
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-deployment
+  namespace: devops-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-app
+  template:
+    metadata:
+      labels:
+        app: hello-app
+    spec:
+      containers:
+        - name: hello-container
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+```
+
+File: `k8s/sample-service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-service
+  namespace: devops-lab
+spec:
+  type: ClusterIP
+  selector:
+    app: hello-app
+  ports:
+    - port: 80
+      targetPort: 80
+```
+
+Apply:
+
+```powershell
+kubectl apply -f k8s/sample-deployment.yaml
+kubectl apply -f k8s/sample-service.yaml
+kubectl get all -n devops-lab
+```
+
+---
+
+## 4. Troubleshooting Summary
+
+Common issues and fixes are documented in `docs/troubleshooting.md` and include:
+
+- PATH issues for `git`, `kubectl`, `helm`, and `curl`
+- Docker daemon not running
+- Kubernetes context misconfiguration
+
+---
+
+## 5. Evidence Checklist for Academic Submission
+
+- [ ] `devops-setup/` directory checked into version control
+- [ ] Screenshots of all tool versions and Kubernetes resources
+- [ ] Text logs of key verification commands in `logs/`
+- [ ] Sample Kubernetes deployment and service manifest files
+- [ ] README updated with final versions and dates
+- [ ] Git commit and Pull Request link documented
