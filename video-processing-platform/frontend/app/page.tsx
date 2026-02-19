@@ -6,6 +6,8 @@ import {
   Timer,
   Zap,
 } from "lucide-react";
+import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import Navbar from "../components/Navbar";
 
@@ -54,7 +56,10 @@ const features: Feature[] = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const { sessionClaims } = await auth();
+  const role = (sessionClaims?.metadata as { role?: string } | undefined)?.role;
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
       <Navbar active="none" />
@@ -72,15 +77,29 @@ export default function Home() {
               captions—all backed by a resilient job processing pipeline.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
-              <button className="rounded-lg bg-indigo-700 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800">
-                Browse Courses
-              </button>
-              <Link
-                href="/dashboard"
-                className="rounded-lg border border-indigo-700 bg-white px-6 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-              >
-                Admin Dashboard
-              </Link>
+              <SignedOut>
+                <Link
+                  href="/login"
+                  className="rounded-lg bg-indigo-700 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className="rounded-lg border border-indigo-700 bg-white px-6 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                >
+                  Sign Up
+                </Link>
+              </SignedOut>
+
+              <SignedIn>
+                <Link
+                  href={role === "admin" ? "/admin/dashboard" : "/student"}
+                  className="rounded-lg bg-indigo-700 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800"
+                >
+                  Go to Dashboard
+                </Link>
+              </SignedIn>
             </div>
           </div>
         </section>
