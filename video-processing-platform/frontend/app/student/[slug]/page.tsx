@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import Navbar from "../../../components/Navbar";
-import { lectures } from "../lectures";
+import { fetchLecture } from "../lectures";
 
 type LecturePageProps = {
   params: Promise<{ slug: string }>;
@@ -18,9 +18,11 @@ type LecturePageProps = {
 
 export default async function LecturePage({ params }: LecturePageProps) {
   const { slug } = await params;
-  const lecture = lectures.find((item) => item.slug === slug);
+  let lecture;
 
-  if (!lecture) {
+  try {
+    lecture = await fetchLecture(slug);
+  } catch {
     notFound();
   }
 

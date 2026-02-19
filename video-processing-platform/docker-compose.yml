@@ -7,6 +7,11 @@ services:
       - "8000:8000"
     volumes:
       - upload_data:/tmp
+    env_file:
+      - .env
+    environment:
+      - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017}
+      - MONGO_DB_NAME=${MONGO_DB_NAME:-video_platform}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -25,5 +30,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
 volumes:
   upload_data:
+  mongo_data:

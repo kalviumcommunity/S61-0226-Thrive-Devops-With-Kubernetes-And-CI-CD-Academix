@@ -1,11 +1,12 @@
 import { Clock3, Search } from "lucide-react";
 import Link from "next/link";
 import Navbar from "../../components/Navbar";
-import { lectures } from "./lectures";
+import { fetchLectures } from "./lectures";
 
 const subjects = ["All Subjects", "Computer Science", "Mathematics", "Business", "UX Design"];
 
-export default function StudentLibraryPage() {
+export default async function StudentLibraryPage() {
+  const lectures = await fetchLectures();
   return (
     <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
       <Navbar active="library" />
