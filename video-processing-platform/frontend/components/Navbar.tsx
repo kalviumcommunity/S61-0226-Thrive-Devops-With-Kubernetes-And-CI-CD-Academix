@@ -18,7 +18,7 @@ export default function Navbar({ active = "none" }: NavbarProps) {
 
         <nav className="hidden items-center gap-6 text-xs text-slate-500 md:flex lg:text-sm">
           <Link
-            href="#"
+            href="/student"
             className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
               active === "library" ? "rounded-md bg-indigo-100 px-2.5 py-1 text-indigo-700" : ""
             }`}
