@@ -916,3 +916,137 @@ PR review checklist:
 - `Readme.md` contains learning documentation and contribution workflow guidance.
 - `screenshots/` stores visual references used in documentation and PR context.
 
+
+# Dockerfile Engineering – Sprint #3
+
+## Overview
+
+This project demonstrates production-quality Dockerfile practices as part of Sprint #3. The objective is not just to build a working container, but to create an image that is:
+
+* Efficient
+* Predictable
+* Optimized for caching
+* Maintainable
+* CI/CD-ready
+
+This README explains the architectural decisions behind the Dockerfile structure.
+
+---
+
+## Role of the Dockerfile
+
+A Dockerfile is a declarative build specification that defines how a container image is constructed.
+
+In DevOps workflows:
+
+* Dockerfiles are executed repeatedly in CI/CD pipelines.
+* Builds must be deterministic.
+* Images must not depend on local machine configuration.
+* Inefficient instructions can significantly slow down pipelines.
+
+For this reason, the Dockerfile in this project is structured intentionally to optimize build performance, reduce image size, and ensure consistent behavior across environments.
+
+--
+
+### Reasoning
+
+The selected base image is:
+
+* Minimal, reducing final image size
+* Official and actively maintained
+* Secure, with a smaller attack surface
+* Appropriate for the required runtime
+
+### Trade-offs
+
+| Slim Image               | Full Image              |
+| ------------------------ | ----------------------- |
+| Smaller size             | Larger                  |
+| Fewer preinstalled tools | More built-in utilities |
+| Reduced attack surface   | Increased convenience   |
+
+The slim variant was chosen to prioritize performance and security over convenience.
+
+---
+
+## Layers and Caching Strategy
+
+Each Dockerfile instruction creates a new layer. Docker caches these layers to speed up subsequent builds.
+
+If an early layer changes, all subsequent layers must be rebuilt. Therefore, instruction order directly affects build performance.
+
+### Optimization Strategy
+
+1. Place rarely changing instructions early.
+2. Place frequently changing application code later.
+3. Separate dependency installation from application code copying.
+
+---
+
+## Best Practices Applied
+
+### 1. Minimal Image Size
+
+* Used slim base image.
+* Avoided unnecessary packages.
+* Used `--no-cache-dir` when installing dependencies.
+
+### 2. Logical Instruction Ordering
+
+* Dependencies installed before copying full source.
+* Frequently changing files placed later.
+
+### 3. Deterministic Builds
+
+* No reliance on local environment.
+* All dependencies declared explicitly.
+* Explicit working directory defined.
+
+### 4. Security Considerations
+
+* Avoid running containers as root (if applicable).
+* Only required artifacts included in final image.
+* Avoided unnecessary build tools in runtime image.
+
+### 5. Readability and Maintainability
+
+* Clear separation of build steps.
+* Minimal but meaningful comments.
+* Logical grouping of related instructions.
+
+---
+
+## From Dockerfile to Image Artifact
+
+The Dockerfile serves as a blueprint for producing a reusable image artifact.
+
+The resulting image:
+
+* Can be built locally or in CI pipelines.
+* Behaves consistently across environments.
+* Is portable and deployable to container platforms.
+
+Build command:
+
+```bash
+docker build -t my-app:latest .
+```
+
+Run command:
+
+```bash
+docker run -p 8000:8000 my-app:latest
+```
+
+---
+
+## Conclusion
+
+This Dockerfile is structured with engineering intent rather than trial-and-error experimentation. It prioritizes:
+
+* Performance
+* Security
+* Predictability
+* Maintainability
+
+The goal is to produce a reliable container image that builds consistently and integrates smoothly into automated DevOps workflows.
