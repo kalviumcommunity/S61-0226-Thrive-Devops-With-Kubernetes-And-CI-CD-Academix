@@ -1050,3 +1050,94 @@ This Dockerfile is structured with engineering intent rather than trial-and-erro
 * Maintainability
 
 The goal is to produce a reliable container image that builds consistently and integrates smoothly into automated DevOps workflows.
+
+---
+
+# Introduction to Containers & Containerization
+
+## Overview
+
+In this lesson, I learned **why containers exist**, **what problems they solve**, and **how they are different from virtual machines**.
+The focus was not on writing Dockerfiles or running containers, but on building a **strong conceptual understanding** of containerization in modern DevOps workflows.
+
+---
+
+## Why Containers Emerged
+
+Before containers, applications were deployed:
+
+* Directly on servers, or
+* Inside virtual machines
+
+This caused many problems such as:
+
+* “Works on my machine” issues
+* Dependency conflicts
+* Slow setup and deployment
+* Different behavior in dev, test, and production
+
+**Containers solved this** by packaging the application **along with all its dependencies** into one portable unit that runs the same everywhere.
+
+---
+
+## What a Container Really Is
+
+A container:
+
+* Is **not a virtual machine**
+* Does **not run its own operating system**
+* Shares the **host OS kernel**
+* Runs the application in an isolated environment
+
+Because of this:
+
+* Containers are **lightweight**
+* Start **very fast**
+* Use **less resources** compared to virtual machines
+
+A container acts as a **standard runtime boundary** for applications.
+
+---
+
+## Containers vs Virtual Machines
+
+| Feature        | Containers           | Virtual Machines              |
+| -------------- | -------------------- | ----------------------------- |
+| OS             | Share host OS        | Separate OS for each VM       |
+| Startup Time   | Very fast (seconds)  | Slow (minutes)                |
+| Resource Usage | Low                  | High                          |
+| Size           | Small                | Large                         |
+| Best For       | CI/CD, microservices | Strong isolation, legacy apps |
+
+Containers trade some isolation for **speed, simplicity, and scalability**, which is ideal for modern DevOps systems.
+
+---
+
+## Role of Containers in CI/CD
+
+Containers fit naturally into CI/CD pipelines because:
+
+* Same environment is used for **build, test, and production**
+* Reduces environment mismatch issues
+* Pipelines become more **reliable and repeatable**
+
+In modern delivery:
+
+* Code → Container Image → Registry → Deployment
+  This makes releases **faster, safer, and consistent**.
+
+---
+
+## Common Use Cases of Containers
+
+Containers are commonly used for:
+
+* Backend services
+* Frontend applications
+* Background workers
+* Test and build tools
+* Standardized developer environments
+
+In large systems, containers become the **deployable units** managed by orchestration tools like Kubernetes.
+
+---
