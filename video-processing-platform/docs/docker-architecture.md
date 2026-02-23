@@ -11,6 +11,19 @@ video-processing-platform/
 
 The goal is to understand how images, containers, layers, and orchestration work together for this specific backend–frontend system, not just to repeat generic Docker theory.
 
+### Quick Start (Connected Frontend + Backend)
+
+Run from `video-processing-platform/`:
+
+```bash
+docker compose up --build
+```
+
+This project now uses two API URLs for the frontend:
+
+- `NEXT_PUBLIC_API_URL=http://localhost:8000` for browser calls from the host machine.
+- `INTERNAL_API_URL=http://backend:8000` for server-side calls from the frontend container to the backend container.
+
 ---
 
 ## Docker as a Platform in This Project
