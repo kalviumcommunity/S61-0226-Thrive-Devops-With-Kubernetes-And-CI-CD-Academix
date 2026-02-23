@@ -197,10 +197,58 @@ export default function AdminDashboardPage() {
 
       const payload: UploadResponse = await response.json();
       setJobId(payload.job_id);
-      setFormMessage(`Upload accepted. Tracking job ${payload.job_id}.`);
-      setLectureTitle("");
-      setDescription("");
-      setSelectedFile(null);
+
+      try {
+        const lecturePayload = {
+          slug: payload.job_id,
+          title: lectureTitle || selectedFile.name || payload.job_id,
+          description:
+            description || "Transcoded lecture generated from uploaded video.",
+          duration: "10:00",
+          image:
+            "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=80",
+          publishedDate: new Date().toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "2-digit",
+          }),
+          views: "0 views",
+          aiSummary:
+            "Summary will be generated after initial student engagement.",
+          keyConcepts: [] as Array<{ title: string; timestamp: string }>,
+        };
+
+        const lectureResponse = await fetch(`${apiBaseUrl}/api/lectures`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(lecturePayload),
+        });
+
+        if (!lectureResponse.ok) {
+          const lectureError = (await lectureResponse
+            .json()
+            .catch(() => ({}))) as { detail?: string };
+          throw new Error(
+            lectureError.detail ??
+              "Video uploaded but lecture metadata could not be saved.",
+          );
+        }
+
+        setFormMessage(
+          `Upload accepted and lecture created. Tracking job ${payload.job_id}.`,
+        );
+        setLectureTitle("");
+        setDescription("");
+        setSelectedFile(null);
+      } catch (lectureError) {
+        const message =
+          lectureError instanceof Error
+            ? lectureError.message
+            : "Video uploaded but lecture metadata could not be saved.";
+        setFormError(message);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Something went wrong";
       setFormError(message);

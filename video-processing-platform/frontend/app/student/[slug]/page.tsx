@@ -2,7 +2,6 @@ import {
   AlertCircle,
   ChevronRight,
   MessageSquareText,
-  Play,
   RefreshCcw,
   Shield,
   Sparkles,
@@ -11,6 +10,7 @@ import {
 import { notFound } from "next/navigation";
 import Navbar from "../../../components/Navbar";
 import { fetchLecture } from "../lectures";
+import VideoPlayer from "./VideoPlayer";
 
 type LecturePageProps = {
   params: Promise<{ slug: string }>;
@@ -25,6 +25,8 @@ export default async function LecturePage({ params }: LecturePageProps) {
   } catch {
     notFound();
   }
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
@@ -52,15 +54,7 @@ export default async function LecturePage({ params }: LecturePageProps) {
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <div className="relative overflow-hidden rounded-3xl bg-black">
-                <img src={lecture.image} alt={lecture.title} className="h-[380px] w-full object-cover opacity-65" />
-
-                <button className="absolute left-1/2 top-1/2 inline-flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm">
-                  <Play className="ml-1 h-9 w-9 fill-white" />
-                </button>
-
-                <div className="absolute bottom-14 left-1/2 w-[78%] -translate-x-1/2 rounded-xl border border-white/15 bg-black/40 px-6 py-4 text-center text-3xl font-semibold leading-tight text-white backdrop-blur-sm">
-                  The interaction between these two distributed nodes creates a unique synergy...
-                </div>
+                <VideoPlayer src={`${apiBaseUrl}/api/media/${lecture.slug}`} slug={lecture.slug} />
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
