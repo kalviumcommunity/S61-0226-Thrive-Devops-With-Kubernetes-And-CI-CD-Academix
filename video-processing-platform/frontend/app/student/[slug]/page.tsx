@@ -2,6 +2,7 @@ import {
   AlertCircle,
   ChevronRight,
   MessageSquareText,
+  Play,
   RefreshCcw,
   Shield,
   Sparkles,
