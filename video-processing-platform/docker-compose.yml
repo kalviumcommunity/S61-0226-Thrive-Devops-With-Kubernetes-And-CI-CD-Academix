@@ -1,40 +1,65 @@
 services:
   backend:
     build: ./backend
+    container_name: video-backend
+    env_file:
+      - ./backend/.env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - upload_data:/tmp
-    environment:
-      - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017}
-      - MONGO_DB_NAME=${MONGO_DB_NAME:-video_platform}
+    networks:
+      - video-network
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 3s
       retries: 3
-    restart: unless-stopped
+    restart: on-failure:3
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_local}
+    container_name: video-frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_local}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
       - INTERNAL_API_URL=http://backend:8000
+    networks:
+      - video-network
     depends_on:
       backend:
         condition: service_healthy
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: on-failure:3
 
   mongo:
     image: mongo:7
-    restart: unless-stopped
+    container_name: video-mongo
+    restart: on-failure:3
+    env_file:
+      - ./backend/.env
+    networks:
+      - video-network
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=video_platform
 
 volumes:
   upload_data:
   mongo_data:
+
+networks:
+  video-network:
+    driver: bridge
