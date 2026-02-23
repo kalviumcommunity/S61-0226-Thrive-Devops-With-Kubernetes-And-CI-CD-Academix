@@ -18,24 +18,24 @@ export default function Navbar({ active = "none" }: NavbarProps) {
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold text-indigo-700">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-white">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-6">
+        <Link href="/" className="flex items-center gap-2 text-base font-semibold text-indigo-700">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-indigo-600 text-white">
             <Clapperboard className="h-4 w-4" />
           </span>
           Academix
         </Link>
 
         <SignedIn>
-          <nav className="hidden items-center gap-6 text-xs text-slate-500 md:flex lg:text-sm">
+          <nav className="hidden items-center gap-5 text-xs text-slate-500 md:flex">
             {!isAdmin ? (
               <Link
                 href="/student"
                 className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                  active === "library" ? "rounded-md bg-indigo-100 px-2.5 py-1 text-indigo-700" : ""
+                  active === "library" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
                 }`}
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-3.5 w-3.5" />
                 Student Library
               </Link>
             ) : null}
@@ -45,19 +45,19 @@ export default function Navbar({ active = "none" }: NavbarProps) {
                 <Link
                   href="/admin/dashboard"
                   className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                    active === "admin" ? "rounded-md bg-indigo-100 px-2.5 py-1 text-indigo-700" : ""
+                    active === "admin" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
                   }`}
                 >
-                  <LayoutDashboard className="h-4 w-4" />
+                  <LayoutDashboard className="h-3.5 w-3.5" />
                   Admin Dashboard
                 </Link>
                 <Link
                   href="/admin/dashboard"
                   className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                    active === "monitoring" ? "rounded-md bg-indigo-100 px-2.5 py-1 text-indigo-700" : ""
+                    active === "monitoring" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
                   }`}
                 >
-                  <Gauge className="h-4 w-4" />
+                  <Gauge className="h-3.5 w-3.5" />
                   Job Monitoring
                 </Link>
               </>
@@ -65,8 +65,8 @@ export default function Navbar({ active = "none" }: NavbarProps) {
           </nav>
 
           <SignOutButton>
-            <button className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              <LogOut className="h-4 w-4" />
+            <button className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+              <LogOut className="h-3.5 w-3.5" />
               Sign Out
             </button>
           </SignOutButton>
@@ -76,16 +76,16 @@ export default function Navbar({ active = "none" }: NavbarProps) {
           <div className="flex items-center gap-2">
             <Link
               href="/login"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
             >
-              <LogIn className="h-4 w-4" />
+              <LogIn className="h-3.5 w-3.5" />
               Login
             </Link>
             <Link
               href="/sign-up"
-              className="inline-flex items-center gap-1.5 rounded-full bg-indigo-700 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-800"
+              className="inline-flex items-center gap-1.5 rounded-full bg-indigo-700 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-800"
             >
-              <UserPlus className="h-4 w-4" />
+              <UserPlus className="h-3.5 w-3.5" />
               Sign Up
             </Link>
           </div>

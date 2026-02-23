@@ -2,13 +2,14 @@ import uuid
 import asyncio
 import logging
 import os
-import tempfile
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
@@ -50,6 +51,19 @@ class Lecture(BaseModel):
     views: str
     aiSummary: str
     keyConcepts: list[KeyConcept]
+    videoUrl: str | None = None
+
+
+class LectureUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    duration: str | None = None
+    image: str | None = None
+    publishedDate: str | None = None
+    views: str | None = None
+    aiSummary: str | None = None
+    keyConcepts: list[KeyConcept] | None = None
+    videoUrl: str | None = None
 
 
 class ViewPayload(BaseModel):
@@ -64,11 +78,35 @@ class JobStatus(BaseModel):
     formats: list[str]
 
 
+def slugify(value: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9\s-]", "", value).strip().lower()
+    compact = re.sub(r"[-\s]+", "-", normalized)
+    return compact or "lecture"
+
+
 def get_db() -> AsyncIOMotorDatabase:
     db = getattr(app.state, "db", None)
     if db is None:
         raise HTTPException(status_code=500, detail="Database not initialized")
     return db
+
+
+def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
+    return Lecture(
+        slug=doc["slug"],
+        title=doc["title"],
+        description=doc["description"],
+        duration=doc["duration"],
+        image=doc["image"],
+        publishedDate=doc["publishedDate"],
+        views=doc["views"],
+        aiSummary=doc["aiSummary"],
+        keyConcepts=[
+            KeyConcept(title=item["title"], timestamp=item["timestamp"])
+            for item in doc.get("keyConcepts", [])
+        ],
+        videoUrl=doc.get("videoUrl"),
+    )
 
 
 @app.on_event("startup")
@@ -94,6 +132,8 @@ async def health_check(db: AsyncIOMotorDatabase = Depends(get_db)) -> dict[str, 
 @app.post("/api/upload")
 async def upload_video(
     file: UploadFile = File(...),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict[str, str]:
     if not file.content_type or not file.content_type.startswith("video/"):
@@ -116,7 +156,8 @@ async def upload_video(
     job_doc = {
         "job_id": job_id,
         "filename": file.filename,
-        "content_type": file.content_type,
+        "title": (title or "").strip() or file.filename,
+        "description": (description or "").strip() or "Uploaded lecture",
         "status": "queued",
         "progress": 0.0,
         "formats": formats,
@@ -238,25 +279,10 @@ async def register_view(
 async def list_lectures(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> list[Lecture]:
-    cursor = db.lectures.find({})
+    cursor = db.lectures.find({}).sort("created_at", -1)
     results: list[Lecture] = []
     async for doc in cursor:
-        results.append(
-            Lecture(
-                slug=doc["slug"],
-                title=doc["title"],
-                description=doc["description"],
-                duration=doc["duration"],
-                image=doc["image"],
-                publishedDate=doc["publishedDate"],
-                views=doc["views"],
-                aiSummary=doc["aiSummary"],
-                keyConcepts=[
-                    KeyConcept(title=item["title"], timestamp=item["timestamp"])
-                    for item in doc.get("keyConcepts", [])
-                ],
-            )
-        )
+        results.append(lecture_from_doc(doc))
     return results
 
 
@@ -268,20 +294,7 @@ async def get_lecture(
     doc = await db.lectures.find_one({"slug": slug})
     if not doc:
         raise HTTPException(status_code=404, detail="Lecture not found")
-    return Lecture(
-        slug=doc["slug"],
-        title=doc["title"],
-        description=doc["description"],
-        duration=doc["duration"],
-        image=doc["image"],
-        publishedDate=doc["publishedDate"],
-        views=doc["views"],
-        aiSummary=doc["aiSummary"],
-        keyConcepts=[
-            KeyConcept(title=item["title"], timestamp=item["timestamp"])
-            for item in doc.get("keyConcepts", [])
-        ],
-    )
+    return lecture_from_doc(doc)
 
 
 @app.post("/api/lectures", response_model=Lecture)
@@ -298,6 +311,56 @@ async def create_lecture(
     doc["updated_at"] = now
     await db.lectures.insert_one(doc)
     return lecture
+
+
+@app.put("/api/lectures/{slug}", response_model=Lecture)
+async def update_lecture(
+    slug: str,
+    payload: LectureUpdate,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> Lecture:
+    existing = await db.lectures.find_one({"slug": slug})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        return lecture_from_doc(existing)
+
+    updates["updated_at"] = datetime.utcnow()
+    await db.lectures.update_one({"slug": slug}, {"$set": updates})
+
+    updated = await db.lectures.find_one({"slug": slug})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    return lecture_from_doc(updated)
+
+
+@app.delete("/api/lectures/{slug}")
+async def delete_lecture(
+    slug: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict[str, str]:
+    result = await db.lectures.delete_one({"slug": slug})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+    return {"message": "Lecture deleted"}
+
+
+@app.get("/api/video/{job_id}")
+async def stream_video(
+    job_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> FileResponse:
+    job_doc = await db.jobs.find_one({"job_id": job_id})
+    if not job_doc:
+        raise HTTPException(status_code=404, detail="Video job not found")
+
+    file_path = job_doc.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    return FileResponse(path=file_path, filename=job_doc.get("filename", "lecture-video"))
 
 
 async def transcode(job_id: str) -> None:
@@ -324,6 +387,33 @@ async def transcode(job_id: str) -> None:
         {"job_id": job_id},
         {"$set": {"status": "completed", "progress": 100.0, "updated_at": datetime.utcnow()}},
     )
+
+    job_doc = await db.jobs.find_one({"job_id": job_id})
+    if job_doc:
+        title = str(job_doc.get("title", job_doc.get("filename", "Lecture")))
+        description = str(job_doc.get("description", "Uploaded lecture"))
+        slug = f"{slugify(title)}-{job_id}"
+        lecture_doc = {
+            "slug": slug,
+            "title": title,
+            "description": description,
+            "duration": "00:00",
+            "image": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+            "publishedDate": datetime.utcnow().strftime("%b %d, %Y"),
+            "views": "0 views",
+            "aiSummary": "AI summary will be available after post-processing completes.",
+            "keyConcepts": [],
+            "videoUrl": f"/api/video/{job_id}",
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "source_job_id": job_id,
+        }
+
+        await db.lectures.update_one(
+            {"source_job_id": job_id},
+            {"$set": lecture_doc},
+            upsert=True,
+        )
 
     logger.info("Job %s transcoding completed", job_id)
 if __name__ == "__main__":

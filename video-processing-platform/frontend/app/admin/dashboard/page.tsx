@@ -67,6 +67,12 @@ type JobStatus = {
   formats: string[];
 };
 
+type Lecture = {
+  slug: string;
+  title: string;
+  description: string;
+};
+
 export default function AdminDashboardPage() {
   const [lectureTitle, setLectureTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -76,6 +82,10 @@ export default function AdminDashboardPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [selectedLectureSlug, setSelectedLectureSlug] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
 
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -156,6 +166,24 @@ export default function AdminDashboardPage() {
     };
   }, [apiBaseUrl, jobId]);
 
+  useEffect(() => {
+    const loadLectures = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/lectures`);
+        if (!response.ok) {
+          throw new Error("Unable to load lectures");
+        }
+
+        const payload = (await response.json()) as Lecture[];
+        setLectures(payload);
+      } catch {
+        setLectures([]);
+      }
+    };
+
+    loadLectures();
+  }, [apiBaseUrl, jobStatus?.status]);
+
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     setFormError(null);
     setFormMessage(null);
@@ -180,10 +208,22 @@ export default function AdminDashboardPage() {
       return;
     }
 
+    if (!lectureTitle.trim()) {
+      setFormError("Please enter a lecture title.");
+      return;
+    }
+
+    if (!description.trim()) {
+      setFormError("Please enter a lecture description.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const formData = new FormData();
       formData.append("file", selectedFile);
+      formData.append("title", lectureTitle.trim());
+      formData.append("description", description.trim());
 
       const response = await fetch(`${apiBaseUrl}/api/upload`, {
         method: "POST",
@@ -254,6 +294,69 @@ export default function AdminDashboardPage() {
       setFormError(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const startEditLecture = (lecture: Lecture) => {
+    setSelectedLectureSlug(lecture.slug);
+    setEditTitle(lecture.title);
+    setEditDescription(lecture.description);
+  };
+
+  const handleUpdateLecture = async () => {
+    if (!selectedLectureSlug) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/lectures/${selectedLectureSlug}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to update lecture");
+      }
+
+      setLectures((current) =>
+        current.map((lecture) =>
+          lecture.slug === selectedLectureSlug
+            ? { ...lecture, title: editTitle.trim(), description: editDescription.trim() }
+            : lecture,
+        ),
+      );
+      setSelectedLectureSlug(null);
+      setEditTitle("");
+      setEditDescription("");
+    } catch {
+      setFormError("Could not update lecture details.");
+    }
+  };
+
+  const handleDeleteLecture = async (slug: string) => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/lectures/${slug}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to delete lecture");
+      }
+
+      setLectures((current) => current.filter((lecture) => lecture.slug !== slug));
+      if (selectedLectureSlug === slug) {
+        setSelectedLectureSlug(null);
+        setEditTitle("");
+        setEditDescription("");
+      }
+    } catch {
+      setFormError("Could not delete lecture.");
     }
   };
 
@@ -433,6 +536,82 @@ export default function AdminDashboardPage() {
                   <p className="mt-3 text-lg text-slate-500">No active jobs in the queue.</p>
                 </div>
               )}
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3">
+              <h2 className="text-2xl font-bold text-slate-900">Manage Lectures</h2>
+              <p className="mt-1 text-sm text-slate-500">Edit or delete published lecture metadata.</p>
+
+              {selectedLectureSlug ? (
+                <div className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(event) => setEditTitle(event.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+                    placeholder="Lecture title"
+                  />
+                  <input
+                    type="text"
+                    value={editDescription}
+                    onChange={(event) => setEditDescription(event.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+                    placeholder="Lecture description"
+                  />
+                  <div className="md:col-span-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleUpdateLecture}
+                      className="rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800"
+                    >
+                      Save Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLectureSlug(null)}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-3">
+                {lectures.length > 0 ? (
+                  lectures.map((lecture) => (
+                    <div
+                      key={lecture.slug}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{lecture.title}</p>
+                        <p className="text-xs text-slate-500">{lecture.description}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditLecture(lecture)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteLecture(lecture.slug)}
+                          className="rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    No lectures available yet.
+                  </div>
+                )}
+              </div>
             </section>
           </div>
         </section>
