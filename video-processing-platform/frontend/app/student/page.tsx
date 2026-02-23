@@ -1,4 +1,5 @@
 import { Clock3, Search } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import Navbar from "../../components/Navbar";
 import { fetchLectures } from "./lectures";
@@ -74,10 +75,12 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
                   className="group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
                 >
                   <div className="relative h-40 w-full">
-                    <img
+                    <Image
                       src={lecture.image}
                       alt={lecture.title}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                      fill
+                      sizes="(max-width: 1280px) 100vw, 400px"
+                      className="object-cover transition duration-300 group-hover:scale-[1.02]"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
                     <span className="absolute bottom-3 right-3 rounded-md bg-slate-900/90 px-2 py-1 text-xs font-semibold text-white">

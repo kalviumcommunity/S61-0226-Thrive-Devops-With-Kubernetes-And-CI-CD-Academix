@@ -7,6 +7,7 @@ import {
   Sparkles,
   WandSparkles,
 } from "lucide-react";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import Navbar from "../../../components/Navbar";
 import { fetchLecture, resolveApiUrl } from "../lectures";
@@ -61,10 +62,13 @@ export default async function LecturePage({ params }: LecturePageProps) {
                   />
                 ) : (
                   <>
-                    <img
+                    <Image
                       src={lecture.image}
                       alt={lecture.title}
-                      className="h-[220px] w-full object-cover opacity-65 md:h-[300px] lg:h-[360px]"
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 720px"
+                      className="object-cover opacity-65"
+                      priority
                     />
                     <button className="absolute left-1/2 top-1/2 inline-flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm">
                       <Play className="ml-1 h-9 w-9 fill-white" />
