@@ -20,6 +20,7 @@ export default function VideoPlayer({ src, slug }: VideoPlayerProps) {
       return;
     }
 
+    // Report view once per session to avoid duplicate increments on pause/replay.
     setHasReportedView(true);
 
     try {
@@ -31,15 +32,17 @@ export default function VideoPlayer({ src, slug }: VideoPlayerProps) {
         },
         body: JSON.stringify({ userId }),
       });
-    } catch {
+    } catch (error) {
+      console.error("Failed to register lecture view", error);
     }
   };
 
   return (
     <video
       controls
-      className="h-[380px] w-full object-contain bg-black"
+      className="h-[220px] w-full object-cover md:h-[300px] lg:h-[360px]"
       src={src}
+      preload="metadata"
       onPlay={handlePlay}
     />
   );

@@ -14,13 +14,18 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   IMAGE_TAG: ${{ github.sha }}
+  K8S_NAMESPACE: default
 
 jobs:
   backend-ci:
     name: Backend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: video-processing-platform/backend
@@ -36,14 +41,17 @@ jobs:
           cache-dependency-path: video-processing-platform/backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest tests -v
+        run: python -m pytest tests -v
 
   frontend-ci:
     name: Frontend Lint & Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: video-processing-platform/frontend
@@ -55,11 +63,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
-          cache-dependency-path: video-processing-platform/frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Set Clerk publishable key fallback
         run: |
@@ -73,12 +84,15 @@ jobs:
         run: npm run lint
 
       - name: Build
+        env:
+          NODE_ENV: production
         run: npm run build
 
   build-backend-image:
     name: Build & Push Backend Image
     needs: backend-ci
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -86,10 +100,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to Docker Hub
+        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Validate Docker credentials
+        run: |
+          if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_TOKEN }}" ]; then
+            echo "DOCKER_HUB_USERNAME and DOCKER_HUB_TOKEN secrets are required."
+            exit 1
+          fi
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
@@ -108,6 +130,7 @@ jobs:
     name: Build & Push Frontend Image
     needs: frontend-ci
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       image: ${{ steps.image.outputs.image }}
     steps:
@@ -115,10 +138,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to Docker Hub
+        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_TOKEN != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Validate Docker credentials
+        run: |
+          if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_TOKEN }}" ]; then
+            echo "DOCKER_HUB_USERNAME and DOCKER_HUB_TOKEN secrets are required."
+            exit 1
+          fi
 
       - name: Set Clerk publishable key fallback
         run: |
@@ -149,6 +180,7 @@ jobs:
       - build-backend-image
       - build-frontend-image
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -158,6 +190,11 @@ jobs:
 
       - name: Configure kubeconfig
         run: |
+          if [ -z "${{ secrets.KUBE_CONFIG }}" ]; then
+            echo "KUBE_CONFIG secret is required."
+            exit 1
+          fi
+
           mkdir -p "$HOME/.kube"
           if echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
             echo "Decoded base64 kubeconfig secret"
@@ -168,16 +205,32 @@ jobs:
 
       - name: Apply manifests
         run: |
-          kubectl apply -f video-processing-platform/k8s/services.yaml
-          kubectl apply -f video-processing-platform/k8s/backend-deployment.yaml
-          kubectl apply -f video-processing-platform/k8s/frontend-deployment.yaml
+          # Validate required secrets already exist in the cluster
+          kubectl get secret clerk-secrets -n "$K8S_NAMESPACE" >/dev/null
+          kubectl get secret mongo-secrets -n "$K8S_NAMESPACE" >/dev/null
+          
+          # Apply persistent volumes
+          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/persistent-volumes.yaml
+          
+          # Apply MongoDB (database layer)
+          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/mongo-deployment.yaml
+          
+          # Wait for MongoDB to be ready
+          kubectl wait --for=condition=ready pod -l app=mongo -n "$K8S_NAMESPACE" --timeout=120s || echo "MongoDB not ready yet, continuing..."
+          
+          # Apply services
+          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/services.yaml
+          
+          # Apply application deployments
+          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/backend-deployment.yaml
+          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/frontend-deployment.yaml
 
       - name: Update deployment images
         run: |
-          kubectl set image deployment/backend backend=${{ needs.build-backend-image.outputs.image }}
-          kubectl set image deployment/frontend frontend=${{ needs.build-frontend-image.outputs.image }}
+          kubectl set image deployment/backend backend=${{ needs.build-backend-image.outputs.image }} -n "$K8S_NAMESPACE"
+          kubectl set image deployment/frontend frontend=${{ needs.build-frontend-image.outputs.image }} -n "$K8S_NAMESPACE"
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/backend --timeout=180s
-          kubectl rollout status deployment/frontend --timeout=180s
+          kubectl rollout status deployment/backend -n "$K8S_NAMESPACE" --timeout=240s
+          kubectl rollout status deployment/frontend -n "$K8S_NAMESPACE" --timeout=240s

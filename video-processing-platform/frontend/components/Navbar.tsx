@@ -11,8 +11,13 @@ type NavbarProps = {
 export default function Navbar({ active = "none" }: NavbarProps) {
   const { user } = useUser();
   const { sessionClaims } = useAuth();
-  const sessionRole = (sessionClaims?.metadata as { role?: string } | undefined)?.role;
-  const userRole = (user?.publicMetadata?.role as string | undefined) ?? (user?.unsafeMetadata?.role as string | undefined);
+  const sessionRole =
+    (sessionClaims?.metadata as { role?: string } | undefined)?.role ??
+    (sessionClaims?.public_metadata as { role?: string } | undefined)?.role ??
+    (sessionClaims?.publicMetadata as { role?: string } | undefined)?.role;
+  const userRole =
+    (user?.publicMetadata?.role as string | undefined) ??
+    (user?.unsafeMetadata?.role as string | undefined);
   const role = (sessionRole ?? userRole ?? "").toLowerCase().trim();
   const isAdmin = role === "admin";
 

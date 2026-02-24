@@ -1,3 +1,6 @@
+import { apiBaseUrl, fetchJson, resolveApiUrl } from "../../lib/api";
+
+// Shared lecture model used by both student and admin pages.
 export type Lecture = {
   slug: string;
   title: string;
@@ -21,75 +24,29 @@ export type LectureUpdate = Partial<
   >
 >;
 
-export const apiBaseUrl =
-  process.env.INTERNAL_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
-
-export function resolveApiUrl(url?: string | null): string | undefined {
-  if (!url) {
-    return undefined;
-  }
-
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
-  if (url.startsWith("/")) {
-    return `${apiBaseUrl}${url}`;
-  }
-
-  return `${apiBaseUrl}/${url}`;
-}
-
 export async function fetchLectures(): Promise<Lecture[]> {
-  const response = await fetch(`${apiBaseUrl}/api/lectures`, {
-    cache: "no-store",
+  return await fetchJson<Lecture[]>(`${apiBaseUrl}/api/lectures`, {
+    headers: {},
   });
-
-  if (!response.ok) {
-    throw new Error("Unable to load lectures");
-  }
-
-  const payload = (await response.json()) as Lecture[];
-  return payload;
 }
 
 export async function fetchLecture(slug: string): Promise<Lecture> {
-  const response = await fetch(`${apiBaseUrl}/api/lectures/${slug}`, {
-    cache: "no-store",
+  return await fetchJson<Lecture>(`${apiBaseUrl}/api/lectures/${slug}`, {
+    headers: {},
   });
-
-  if (!response.ok) {
-    throw new Error("Lecture not found");
-  }
-
-  const payload = (await response.json()) as Lecture;
-  return payload;
 }
 
 export async function updateLecture(slug: string, payload: LectureUpdate): Promise<Lecture> {
-  const response = await fetch(`${apiBaseUrl}/api/lectures/${slug}`, {
+  return await fetchJson<Lecture>(`${apiBaseUrl}/api/lectures/${slug}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify(payload),
   });
-
-  if (!response.ok) {
-    throw new Error("Unable to update lecture");
-  }
-
-  return (await response.json()) as Lecture;
 }
 
 export async function deleteLecture(slug: string): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/api/lectures/${slug}`, {
+  await fetchJson<{ message: string }>(`${apiBaseUrl}/api/lectures/${slug}`, {
     method: "DELETE",
   });
-
-  if (!response.ok) {
-    throw new Error("Unable to delete lecture");
-  }
 }
+
+export { apiBaseUrl, resolveApiUrl };

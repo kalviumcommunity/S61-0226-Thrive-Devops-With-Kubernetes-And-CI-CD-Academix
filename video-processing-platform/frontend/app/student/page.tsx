@@ -1,6 +1,7 @@
 import { Clock3, Search } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import Footer from "../../components/Footer";
 import Navbar from "../../components/Navbar";
 import { fetchLectures } from "./lectures";
 
@@ -13,7 +14,15 @@ type StudentLibraryPageProps = {
 export default async function StudentLibraryPage({ searchParams }: StudentLibraryPageProps) {
   const { q } = await searchParams;
   const query = (q ?? "").trim().toLowerCase();
-  const lectures = await fetchLectures();
+  let lectures = [] as Awaited<ReturnType<typeof fetchLectures>>;
+  let loadError: string | null = null;
+
+  try {
+    lectures = await fetchLectures();
+  } catch {
+    loadError = "Lecture service is currently unavailable. Please try again shortly.";
+  }
+
   const filteredLectures = query
     ? lectures.filter(
         (lecture) =>
@@ -65,6 +74,12 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
                 </button>
               ))}
             </div>
+
+            {loadError ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {loadError}
+              </div>
+            ) : null}
           </div>
 
           {filteredLectures.length > 0 ? (
@@ -116,9 +131,7 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-400">
-        © 2026 Academix Learning Platform. Built for the future of education.
-      </footer>
+      <Footer />
     </div>
   );
 }
