@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: video-backend-rs
+  labels:
+    app: video-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: video-backend
+  template:
+    metadata:
+      labels:
+        app: video-backend
+    spec:
+      containers:
+        - name: backend
+          image: video-processing-platform-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MONGO_URL
+              value: "mongodb+srv://skhabeebhussain91_db_user:qbGhiIu1YvtdmDqb@cluster0.y1kdkmp.mongodb.net/?appName=Cluster0"
+            - name: MONGO_DB_NAME
+              value: "video_platform"
+            - name: CLERK_SECRET_KEY
+              value: "sk_test_VTpLjUAKVC2nuPfSzGdfxqN2c3GtEDEdSjx3tVHFBf"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
