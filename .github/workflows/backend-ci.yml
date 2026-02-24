@@ -16,9 +16,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: video-processing-platform/backend
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +29,11 @@ jobs:
           cache-dependency-path: video-processing-platform/backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          cd video-processing-platform/backend
+          pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest tests -v
+        run: |
+          cd video-processing-platform
+          pytest backend/tests -v
