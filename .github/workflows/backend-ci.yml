@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - video-processing-platform/backend/**
-      - .github/workflows/backend-ci.yml
+      - .github/workflows/backend-ci.ymlgit
   push:
     branches: [main]
     paths:
