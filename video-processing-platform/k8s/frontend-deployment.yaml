@@ -21,7 +21,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: yourdockerhub/video-frontend:latest
+          image: pavithra8805/video-frontend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           livenessProbe:
@@ -39,6 +40,16 @@ spec:
           env:
             - name: NEXT_PUBLIC_API_URL
               value: "http://backend-service:8000"
+            - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clerk-secrets
+                  key: publishable-key
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clerk-secrets
+                  key: secret-key
           resources:
             requests:
               cpu: "100m"

@@ -7,8 +7,9 @@ import {
   Zap,
 } from "lucide-react";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import Link from "next/link";
+import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 
 type Feature = {
@@ -58,7 +59,15 @@ const features: Feature[] = [
 
 export default async function Home() {
   const { sessionClaims } = await auth();
-  const role = (sessionClaims?.metadata as { role?: string } | undefined)?.role;
+  const user = await currentUser();
+  const sessionRole =
+    (sessionClaims?.metadata as { role?: string } | undefined)?.role ??
+    (sessionClaims?.public_metadata as { role?: string } | undefined)?.role ??
+    (sessionClaims?.publicMetadata as { role?: string } | undefined)?.role;
+  const userRole =
+    (user?.publicMetadata?.role as string | undefined) ??
+    (user?.unsafeMetadata?.role as string | undefined);
+  const role = (sessionRole ?? userRole ?? "").toLowerCase().trim();
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -136,9 +145,7 @@ export default async function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-400">
-        © 2026 Academix Learning Platform. Built for the future of education.
-      </footer>
+      <Footer />
     </div>
   );
 }

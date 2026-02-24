@@ -1,19 +1,19 @@
-import uuid
 import asyncio
 import logging
 import os
 import re
-from datetime import datetime
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
 from dotenv import load_dotenv
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -22,9 +22,10 @@ logger = logging.getLogger("video-api")
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "video_platform")
 BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
 
-app = FastAPI(title="Video Processing API", version="1.0.0")
+app = FastAPI(title="Video Processing API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -80,6 +81,26 @@ class JobStatus(BaseModel):
     formats: list[str]
 
 
+class DashboardJob(BaseModel):
+    id: str
+    filename: str
+    status: str
+    progress: float
+    updatedAt: str
+
+
+class DashboardSummary(BaseModel):
+    totalLectures: int
+    activeJobs: int
+    completedJobs: int
+    failedJobs: int
+    recentJobs: list[DashboardJob]
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 def slugify(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9\s-]", "", value).strip().lower()
     compact = re.sub(r"[-\s]+", "-", normalized)
@@ -111,11 +132,122 @@ def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
     )
 
 
+def to_iso_string(value: Any) -> str:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
+    return utcnow().isoformat()
+
+
+async def seed_demo_lectures(db: AsyncIOMotorDatabase) -> None:
+    existing_count = await db.lectures.count_documents({})
+    if existing_count > 0:
+        return
+
+    now = utcnow()
+    demo_lectures = [
+        {
+            "slug": "distributed-systems-101",
+            "title": "Distributed Systems 101",
+            "description": "Core concepts of distributed systems, consensus, and fault tolerance.",
+            "duration": "42:18",
+            "image": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+            "publishedDate": "February 24, 2026",
+            "views": "128 views",
+            "aiSummary": "An overview of distributed systems, CAP tradeoffs, and practical patterns for resiliency.",
+            "keyConcepts": [
+                {"title": "Consensus Basics", "timestamp": "08:15"},
+                {"title": "Replication", "timestamp": "17:42"},
+                {"title": "Failure Modes", "timestamp": "31:09"},
+            ],
+            "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            "created_at": now,
+            "updated_at": now,
+            "viewedBy": [],
+        },
+        {
+            "slug": "cloud-native-architecture",
+            "title": "Cloud Native Architecture",
+            "description": "Designing resilient services with containers, service meshes, and observability.",
+            "duration": "36:52",
+            "image": "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=80",
+            "publishedDate": "February 24, 2026",
+            "views": "92 views",
+            "aiSummary": "Explore container orchestration patterns and the building blocks of cloud native systems.",
+            "keyConcepts": [
+                {"title": "Containers", "timestamp": "05:20"},
+                {"title": "Service Mesh", "timestamp": "18:03"},
+                {"title": "Tracing", "timestamp": "27:11"},
+            ],
+            "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+            "created_at": now,
+            "updated_at": now,
+            "viewedBy": [],
+        },
+        {
+            "slug": "ai-powered-learning",
+            "title": "AI-Powered Learning",
+            "description": "Using AI to personalize learning journeys and improve comprehension.",
+            "duration": "28:07",
+            "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
+            "publishedDate": "February 24, 2026",
+            "views": "64 views",
+            "aiSummary": "See how AI can recommend content, summarize lectures, and guide study plans.",
+            "keyConcepts": [
+                {"title": "Adaptive Paths", "timestamp": "06:48"},
+                {"title": "Engagement Signals", "timestamp": "13:52"},
+                {"title": "Outcome Metrics", "timestamp": "22:05"},
+            ],
+            "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+            "created_at": now,
+            "updated_at": now,
+            "viewedBy": [],
+        },
+        {
+            "slug": "security-for-streaming",
+            "title": "Security for Streaming Platforms",
+            "description": "Protecting media content with authentication, authorization, and audit trails.",
+            "duration": "33:40",
+            "image": "https://images.unsplash.com/photo-1556155092-8707de31f9c4?auto=format&fit=crop&w=1200&q=80",
+            "publishedDate": "February 24, 2026",
+            "views": "41 views",
+            "aiSummary": "A practical guide to securing content delivery pipelines and user access patterns.",
+            "keyConcepts": [
+                {"title": "Access Control", "timestamp": "09:05"},
+                {"title": "Token Security", "timestamp": "18:47"},
+                {"title": "Audit Logging", "timestamp": "27:33"},
+            ],
+            "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+            "created_at": now,
+            "updated_at": now,
+            "viewedBy": [],
+        },
+    ]
+
+    await db.lectures.insert_many(demo_lectures)
+
+
+@app.post("/api/seed-lectures")
+async def seed_lectures_endpoint(
+    overwrite: bool = False,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict[str, Any]:
+    if overwrite:
+        await db.lectures.delete_many({})
+
+    await seed_demo_lectures(db)
+    total = await db.lectures.count_documents({})
+    return {"message": "Demo lectures seeded", "total": total}
+
+
 @app.on_event("startup")
 async def startup_db() -> None:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     client = AsyncIOMotorClient(MONGO_URL)
     app.state.db_client = client
     app.state.db = client[MONGO_DB_NAME]
+    await seed_demo_lectures(app.state.db)
 
 
 @app.on_event("shutdown")
@@ -138,54 +270,72 @@ async def upload_video(
     description: str | None = Form(None),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict[str, str]:
+    # Validate the upload request early to fail fast and avoid unnecessary I/O.
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="File must be a video")
 
     job_id = str(uuid.uuid4())[:8]
     formats = ["720p", "480p", "360p"]
-    created_at = datetime.utcnow()
+    created_at = utcnow()
 
     contents = await file.read()
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(UPLOAD_DIR, f"{job_id}_{file.filename}")
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File is too large")
+
+    sanitized_name = Path(file.filename or f"{job_id}.mp4").name
+    file_path = UPLOAD_DIR / f"{job_id}_{sanitized_name}"
 
     try:
-        with open(file_path, "wb") as f:
-            f.write(contents)
-    except OSError:
-        raise HTTPException(status_code=500, detail="Could not persist uploaded file")
+        file_path.write_bytes(contents)
+    except OSError as error:
+        logger.exception("Failed to persist file for job %s", job_id)
+        raise HTTPException(status_code=500, detail="Could not persist uploaded file") from error
+
+    title_value = (title or "").strip() or sanitized_name
+    description_value = (description or "").strip() or "Uploaded lecture"
+    lecture_slug = f"{slugify(title_value)}-{job_id}"
 
     job_doc = {
         "job_id": job_id,
-        "filename": file.filename,
-        "title": (title or "").strip() or file.filename,
-        "description": (description or "").strip() or "Uploaded lecture",
+        "filename": sanitized_name,
+        "content_type": file.content_type,
+        "title": title_value,
+        "description": description_value,
         "status": "queued",
         "progress": 0.0,
         "formats": formats,
         "created_at": created_at,
         "updated_at": created_at,
-        "file_path": file_path,
+        "file_path": str(file_path),
     }
-    await db.jobs.insert_one(job_doc)
 
     lecture_doc = {
-        "slug": job_id,
-        "title": file.filename or job_id,
-        "description": "Transcoded lecture generated from uploaded video.",
-        "duration": "10:00",
-        "image": "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=80",
+        "slug": lecture_slug,
+        "title": title_value,
+        "description": description_value,
+        "duration": "00:00",
+        "image": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
         "publishedDate": created_at.strftime("%B %d, %Y"),
         "views": "0 views",
-        "aiSummary": "Summary will be generated after initial student engagement.",
+        "aiSummary": "AI summary will be available after post-processing completes.",
         "keyConcepts": [],
+        "videoUrl": f"/api/video/{job_id}",
         "created_at": created_at,
         "updated_at": created_at,
+        "source_job_id": job_id,
         "viewedBy": [],
     }
-    existing_lecture = await db.lectures.find_one({"slug": job_id})
-    if not existing_lecture:
-        await db.lectures.insert_one(lecture_doc)
+
+    try:
+        await db.jobs.insert_one(job_doc)
+        await db.lectures.update_one(
+            {"source_job_id": job_id},
+            {"$set": lecture_doc},
+            upsert=True,
+        )
+    except Exception as error:  # noqa: BLE001
+        logger.exception("Failed to create job documents for %s", job_id)
+        raise HTTPException(status_code=500, detail="Could not create upload job") from error
 
     asyncio.create_task(transcode(job_id))
     return {"job_id": job_id, "message": "Upload accepted, transcoding started"}
@@ -208,6 +358,65 @@ async def get_status(
     )
 
 
+@app.get("/api/admin/dashboard-summary", response_model=DashboardSummary)
+async def get_dashboard_summary(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> DashboardSummary:
+    active_jobs = await db.jobs.count_documents({"status": {"$in": ["queued", "processing"]}})
+    completed_jobs = await db.jobs.count_documents({"status": "completed"})
+    failed_jobs = await db.jobs.count_documents({"status": "failed"})
+    total_lectures = await db.lectures.count_documents({})
+
+    recent_jobs_cursor = db.jobs.find({}).sort("updated_at", -1).limit(8)
+    recent_jobs: list[DashboardJob] = []
+    async for job in recent_jobs_cursor:
+        recent_jobs.append(
+            DashboardJob(
+                id=job["job_id"],
+                filename=job.get("filename", "unknown"),
+                status=job.get("status", "queued"),
+                progress=float(job.get("progress", 0.0)),
+                updatedAt=to_iso_string(job.get("updated_at")),
+            )
+        )
+
+    return DashboardSummary(
+        totalLectures=total_lectures,
+        activeJobs=active_jobs,
+        completedJobs=completed_jobs,
+        failedJobs=failed_jobs,
+        recentJobs=recent_jobs,
+    )
+
+
+@app.post("/api/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict[str, str]:
+    job_doc = await db.jobs.find_one({"job_id": job_id})
+    if not job_doc:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    current_status = str(job_doc.get("status", "queued"))
+    if current_status in {"queued", "processing"}:
+        raise HTTPException(status_code=409, detail="Job is already in progress")
+
+    await db.jobs.update_one(
+        {"job_id": job_id},
+        {
+            "$set": {
+                "status": "queued",
+                "progress": 0.0,
+                "updated_at": utcnow(),
+            }
+        },
+    )
+
+    asyncio.create_task(transcode(job_id))
+    return {"message": "Retry started", "job_id": job_id}
+
+
 async def _resolve_media_response(
     job_id: str,
     db: AsyncIOMotorDatabase,
@@ -215,9 +424,11 @@ async def _resolve_media_response(
     job = await db.jobs.find_one({"job_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
     file_path = job.get("file_path")
-    if not file_path or not os.path.exists(file_path):
+    if not file_path or not Path(file_path).exists():
         raise HTTPException(status_code=404, detail="Video file not found")
+
     filename = job.get("filename", f"{job_id}.mp4")
     media_type = job.get("content_type") or "video/mp4"
     return FileResponse(path=file_path, media_type=media_type, filename=filename)
@@ -260,6 +471,7 @@ async def register_view(
         current_views = int(raw_views.split()[0])
     except (ValueError, IndexError):
         current_views = 0
+
     current_views += 1
     views_str = "1 view" if current_views == 1 else f"{current_views} views"
 
@@ -269,7 +481,7 @@ async def register_view(
             "$set": {
                 "views": views_str,
                 "viewedBy": viewed_by,
-                "updated_at": datetime.utcnow(),
+                "updated_at": utcnow(),
             }
         },
     )
@@ -307,7 +519,8 @@ async def create_lecture(
     existing = await db.lectures.find_one({"slug": lecture.slug})
     if existing:
         raise HTTPException(status_code=409, detail="Lecture with this slug already exists")
-    now = datetime.utcnow()
+
+    now = utcnow()
     doc = lecture.model_dump()
     doc["created_at"] = now
     doc["updated_at"] = now
@@ -329,7 +542,7 @@ async def update_lecture(
     if not updates:
         return lecture_from_doc(existing)
 
-    updates["updated_at"] = datetime.utcnow()
+    updates["updated_at"] = utcnow()
     await db.lectures.update_one({"slug": slug}, {"$set": updates})
 
     updated = await db.lectures.find_one({"slug": slug})
@@ -354,76 +567,39 @@ async def stream_video(
     job_id: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> FileResponse:
-    job_doc = await db.jobs.find_one({"job_id": job_id})
-    if not job_doc:
-        raise HTTPException(status_code=404, detail="Video job not found")
-
-    file_path = job_doc.get("file_path")
-    if not file_path or not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Video file not found")
-
-    return FileResponse(path=file_path, filename=job_doc.get("filename", "lecture-video"))
+    return await _resolve_media_response(job_id, db)
 
 
 async def transcode(job_id: str) -> None:
     db = get_db()
-    await db.jobs.update_one(
-        {"job_id": job_id},
-        {"$set": {"status": "processing", "updated_at": datetime.utcnow()}},
-    )
-
-    for i in range(1, 11):
-        await asyncio.sleep(2)
-        progress_value = i * 10
+    try:
+        # This simulates long-running transcoding work and periodically updates progress.
         await db.jobs.update_one(
             {"job_id": job_id},
-            {
-                "$set": {
-                    "progress": progress_value,
-                    "updated_at": datetime.utcnow(),
-                }
-            },
+            {"$set": {"status": "processing", "updated_at": utcnow()}},
         )
 
-    await db.jobs.update_one(
-        {"job_id": job_id},
-        {"$set": {"status": "completed", "progress": 100.0, "updated_at": datetime.utcnow()}},
-    )
+        for progress_step in range(1, 11):
+            await asyncio.sleep(2)
+            progress_value = progress_step * 10
+            await db.jobs.update_one(
+                {"job_id": job_id},
+                {
+                    "$set": {
+                        "progress": progress_value,
+                        "updated_at": utcnow(),
+                    }
+                },
+            )
 
-    job_doc = await db.jobs.find_one({"job_id": job_id})
-    if job_doc:
-        title = str(job_doc.get("title", job_doc.get("filename", "Lecture")))
-        description = str(job_doc.get("description", "Uploaded lecture"))
-        slug = f"{slugify(title)}-{job_id}"
-        lecture_doc = {
-            "slug": slug,
-            "title": title,
-            "description": description,
-            "duration": "00:00",
-            "image": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
-            "publishedDate": datetime.utcnow().strftime("%b %d, %Y"),
-            "views": "0 views",
-            "aiSummary": "AI summary will be available after post-processing completes.",
-            "keyConcepts": [],
-            "videoUrl": f"/api/video/{job_id}",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "source_job_id": job_id,
-        }
-
-        await db.lectures.update_one(
-            {"source_job_id": job_id},
-            {"$set": lecture_doc},
-            upsert=True,
+        await db.jobs.update_one(
+            {"job_id": job_id},
+            {"$set": {"status": "completed", "progress": 100.0, "updated_at": utcnow()}},
         )
-
-    logger.info("Job %s transcoding completed", job_id)
-if __name__ == "__main__":
-    for route in app.routes:
-        print(route.path)
-
-
-print("\nRegistered Routes:\n")
-for route in app.routes:
-    print(route.path)
-print("\n")
+        logger.info("Job %s transcoding completed", job_id)
+    except Exception:  # noqa: BLE001
+        logger.exception("Job %s failed during transcoding", job_id)
+        await db.jobs.update_one(
+            {"job_id": job_id},
+            {"$set": {"status": "failed", "updated_at": utcnow()}},
+        )

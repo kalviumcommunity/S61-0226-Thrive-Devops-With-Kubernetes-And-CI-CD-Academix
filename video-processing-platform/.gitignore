@@ -6,6 +6,9 @@
 **/.env.local
 **/.env.*.local
 
+# Kubernetes secrets (contains sensitive data)
+k8s/secrets.yaml
+
 # Docker
 .dockerignore
 
