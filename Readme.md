@@ -1162,6 +1162,79 @@ Containers are commonly used for:
 * Test and build tools
 * Standardized developer environments
 
-In large systems, containers become the **deployable units** managed by orchestration tools like Kubernetes.
+# Kubernetes Deployment
+
+## Overview
+
+This sprint transitions the project from managing individual Pods/ReplicaSets to using a **Kubernetes Deployment**, which is the recommended way to run applications in production.
+
+The Deployment manages:
+
+* Desired state of the application
+* Replica management
+* Rolling updates
+* Application lifecycle
+
+---
+
+## Deployment Details
+
+* **API Version:** apps/v1
+* **Replicas:** 2
+* **Strategy:** RollingUpdate
+* **Container Image:** nginx (version updated during demo)
+* **Port:** 80
+
+---
+
+## How It Works
+
+1. The Deployment YAML defines the desired state.
+2. `kubectl apply` is used to create or update the Deployment.
+3. If the Deployment already exists, Kubernetes updates it declaratively.
+4. Rolling updates ensure zero downtime by gradually replacing old Pods.
+
+---
+
+## Commands Used
+
+Create / Apply Deployment:
+
+```bash
+kubectl apply -f deployment.yaml
+```
+
+Verify Deployment:
+
+```bash
+kubectl get deployments
+kubectl get pods
+kubectl rollout status deployment/my-app-deployment
+```
+
+Update Deployment (example: change image version):
+
+```bash
+kubectl apply -f deployment.yaml
+```
+
+---
+
+## What Was Demonstrated
+
+* Creation of Deployment using YAML
+* Verification of running Pods
+* Updating container image
+* Rolling update behavior
+* Rollout status check
+
+---
+
+## Why Deployment Instead of Pods?
+
+* Automatically manages ReplicaSets
+* Maintains desired state
+* Supports safe rolling updates
+* Enables scaling and rollback
 
 ---

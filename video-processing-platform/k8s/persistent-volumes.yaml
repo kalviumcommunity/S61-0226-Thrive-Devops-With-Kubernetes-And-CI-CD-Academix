@@ -4,8 +4,8 @@ metadata:
   name: backend-uploads-pvc
 spec:
   accessModes:
-    - ReadWriteMany  # Multiple backend pods can write
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 50Gi  # Adjust based on expected video storage needs
-  storageClassName: standard  # Change to your cloud provider's storage class
+      storage: 5Gi
+  storageClassName: hostpath

@@ -21,8 +21,8 @@ spec:
     spec:
       containers:
         - name: backend
-          image: pavithra8805/video-backend:latest
-          imagePullPolicy: Always
+          image: video-processing-platform-backend:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
