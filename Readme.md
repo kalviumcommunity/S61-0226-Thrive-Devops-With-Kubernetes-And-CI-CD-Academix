@@ -1,3 +1,27 @@
+# Academix Video Learning Platform
+
+This repository contains a video-based learning platform featuring:
+
+- AI-generated summaries, transcripts, and key concepts via Google Gemini
+- **Live AI augmentation**: dynamic section summaries and key concept suggestions based on current playback time, plus clickable transcripts and captions
+- Lecture upload, transcoding simulation, and metadata extraction
+- Progress tracking with WebSocket updates and resume on replay
+- Transcript search and export (TXT/SRT)
+- AI‑generated, improved transcripts with one‑click regeneration
+- Admin dashboard analytics and job retry support
+
+## UI Improvements
+
+The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.
+
+### Transcript Panel
+
+Within the lecture view the transcript is now an AI‑generated approximation of the lecture content rather than a raw description. Students can click "Improve with AI" at the top of the transcript pane to ask Gemini for a richer, more polished set of timestamped segments. The UI updates in place and the backend stores the improved version for future visits.
+
+Other usability upgrades include a built‑in search box with real‑time highlighting, a "Copy" link to grab the entire transcript to the clipboard, and clear feedback when no entries match the query. Export buttons (TXT/SRT) are still available for offline use.
+
+description below...
+
 # Artifact Flow in CI/CD
 
 **Source → Image → Registry → Cluster**

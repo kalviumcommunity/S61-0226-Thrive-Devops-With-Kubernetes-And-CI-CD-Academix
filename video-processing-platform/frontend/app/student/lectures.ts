@@ -6,6 +6,8 @@ export type Lecture = {
   title: string;
   description: string;
   duration: string;
+  // numeric seconds parsed by the server for convenience
+  durationSeconds?: number;
   image: string;
   publishedDate: string;
   views: string;
@@ -15,12 +17,17 @@ export type Lecture = {
     title: string;
     timestamp: string;
   }>;
+  transcript?: Array<{
+    timestamp: string;
+    text: string;
+  }>;
+  progress?: Record<string, number>;
 };
 
 export type LectureUpdate = Partial<
   Pick<
     Lecture,
-    "title" | "description" | "duration" | "image" | "publishedDate" | "views" | "aiSummary" | "videoUrl" | "keyConcepts"
+    "title" | "description" | "duration" | "image" | "publishedDate" | "views" | "aiSummary" | "videoUrl" | "keyConcepts" | "transcript"
   >
 >;
 
@@ -40,6 +47,19 @@ export async function updateLecture(slug: string, payload: LectureUpdate): Promi
   return await fetchJson<Lecture>(`${apiBaseUrl}/api/lectures/${slug}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchProgress(slug: string, userId: string): Promise<{ progress: number }> {
+  return await fetchJson<{ progress: number }>(`${apiBaseUrl}/api/lectures/${slug}/progress/${userId}`, {
+    headers: {},
+  });
+}
+
+export async function updateProgress(slug: string, userId: string, seconds: number): Promise<{ progress: number }> {
+  return await fetchJson<{ progress: number }>(`${apiBaseUrl}/api/lectures/${slug}/progress`, {
+    method: "POST",
+    body: JSON.stringify({ userId, seconds }),
   });
 }
 

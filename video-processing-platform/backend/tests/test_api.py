@@ -108,11 +108,14 @@ class FakeDB:
                     "title": "Intro",
                     "description": "First lecture",
                     "duration": "10:00",
+                    # the numeric seconds will be computed when converting to Lecture model
                     "image": "https://images.unsplash.com/photo-1",
                     "publishedDate": "Jan 01, 2026",
                     "views": "0 views",
                     "aiSummary": "summary",
                     "keyConcepts": [],
+                    "viewedBy": [],
+                    "progress": {},
                 }
             ]
         )
@@ -166,3 +169,116 @@ def test_retry_job_success():
     response = client.post("/api/jobs/job-failed/retry")
     assert response.status_code == 200
     assert response.json()["message"] == "Retry started"
+
+
+def test_progress_api():
+    # initially no progress
+    response = client.get("/api/lectures/intro/progress/user1")
+    assert response.status_code == 200
+    assert response.json()["progress"] == 0.0
+
+    # update progress
+    resp2 = client.post(
+        "/api/lectures/intro/progress",
+        json={"userId": "user1", "seconds": 12.5},
+    )
+    assert resp2.status_code == 200
+    assert resp2.json()["progress"] == 12.5
+
+    # fetch again returns updated value
+    resp3 = client.get("/api/lectures/intro/progress/user1")
+    assert resp3.status_code == 200
+    assert resp3.json()["progress"] == 12.5
+
+    # overwrite value
+    resp4 = client.post(
+        "/api/lectures/intro/progress",
+        json={"userId": "user1", "seconds": 30},
+    )
+    assert resp4.status_code == 200
+    assert resp4.json()["progress"] == 30
+
+    resp5 = client.get("/api/lectures/intro/progress/user1")
+    assert resp5.json()["progress"] == 30
+
+
+def test_search_transcript():
+    # lecture intro has no transcript in fake DB so first add one
+    fake = app.dependency_overrides[get_db]()
+    fake.lectures.docs[0]["transcript"] = [
+        {"timestamp": "00:00", "text": "first sentence about testing"},
+        {"timestamp": "01:00", "text": "another line with keyword"},
+    ]
+    resp = client.get("/api/lectures/intro/search?q=keyword")
+    assert resp.status_code == 200
+    assert len(resp.json()["matches"]) == 1
+    assert resp.json()["matches"][0]["timestamp"] == "01:00"
+
+
+def test_ai_transcript_endpoint():
+    # fake DB has empty transcript initially - endpoint should return default build_transcript output
+    resp = client.post("/api/lectures/intro/ai-transcript")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data.get("transcript"), list)
+    # should include at least the first timestamp
+    assert data["transcript"][0].get("timestamp") == "00:00"
+
+
+def test_generated_transcript_persists():
+    # after regenerating, fetching the lecture should include the same transcript
+    resp1 = client.post("/api/lectures/intro/ai-transcript")
+    assert resp1.status_code == 200
+    transcript = resp1.json()["transcript"]
+
+    resp2 = client.get("/api/lectures/intro")
+    assert resp2.status_code == 200
+    data = resp2.json()
+    assert data.get("transcript") == transcript
+
+
+def test_get_lecture_includes_seconds():
+    # simple fetch should round-trip duration and include computed seconds
+    resp = client.get("/api/lectures/intro")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["duration"] == "10:00"
+    assert abs(data.get("durationSeconds", 0) - 600) < 1
+
+
+def test_key_concepts_endpoint():
+    # lecture intro starts with empty concepts
+    resp = client.get("/api/lectures/intro/key-concepts")
+    assert resp.status_code == 200
+    assert resp.json()["keyConcepts"] == []
+    # add concepts and retry
+    fake = app.dependency_overrides[get_db]()
+    fake.lectures.docs[0]["keyConcepts"] = [{"title": "Test", "timestamp": "00:10"}]
+    resp2 = client.get("/api/lectures/intro/key-concepts")
+    assert resp2.status_code == 200
+    assert resp2.json()["keyConcepts"][0]["title"] == "Test"
+
+
+def test_export_transcript():
+    fake = app.dependency_overrides[get_db]()
+    fake.lectures.docs[0]["transcript"] = [
+        {"timestamp": "00:00", "text": "hello"},
+        {"timestamp": "00:10", "text": "world"},
+    ]
+    resp = client.get("/api/lectures/intro/transcript/export?format=txt")
+    assert resp.status_code == 200
+    assert "hello" in resp.text
+    resp2 = client.get("/api/lectures/intro/transcript/export?format=srt")
+    assert resp2.status_code == 200
+    assert "1" in resp2.text
+    # vtt format
+    resp3 = client.get("/api/lectures/intro/transcript/export?format=vtt")
+    assert resp3.status_code == 200
+    assert resp3.text.startswith("WEBVTT")
+    # live summary/concepts, using a timestamp matching the first segment
+    resp4 = client.get("/api/lectures/intro/live-summary?timestamp=0")
+    assert resp4.status_code == 200
+    assert "summary" in resp4.json()
+    resp5 = client.get("/api/lectures/intro/live-concepts?timestamp=0")
+    assert resp5.status_code == 200
+    assert isinstance(resp5.json().get("keyConcepts"), list)

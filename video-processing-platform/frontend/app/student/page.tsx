@@ -3,7 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import Footer from "../../components/Footer";
 import Navbar from "../../components/Navbar";
-import { fetchLectures } from "./lectures";
+import { fetchLectures, resolveApiUrl } from "./lectures";
+import { currentUser } from "@clerk/nextjs/server";
 
 const subjects = ["All Subjects", "Computer Science", "Mathematics", "Business", "UX Design"];
 
@@ -16,6 +17,9 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
   const query = (q ?? "").trim().toLowerCase();
   let lectures = [] as Awaited<ReturnType<typeof fetchLectures>>;
   let loadError: string | null = null;
+
+  // get optional current user to show progress
+  const user = await currentUser();
 
   try {
     lectures = await fetchLectures();
@@ -36,7 +40,7 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
       <Navbar active="library" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-6xl px-6 py-6 lg:py-8">
+        <section className="mx-auto w-full max-w-4xl px-4 py-4 lg:py-6">
           <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-indigo-50/40 p-5 shadow-sm md:p-6">
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div className="max-w-2xl">
@@ -89,15 +93,34 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
                   key={lecture.slug}
                   className="group flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
                 >
-                  <div className="relative h-40 w-full">
-                    <Image
-                      src={lecture.image}
-                      alt={lecture.title}
-                      fill
-                      sizes="(max-width: 1280px) 100vw, 400px"
-                      className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                    />
+                  <div className="relative h-32 w-full">
+                    {lecture.videoUrl ? (
+                      <video
+                        src={resolveApiUrl(lecture.videoUrl)}
+                        poster={resolveApiUrl(lecture.image) ?? undefined}
+                        preload="metadata"
+                        muted
+                        playsInline
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                      />
+                    ) : (
+                      <Image
+                        src={lecture.image}
+                        alt={lecture.title}
+                        fill
+                        sizes="(max-width: 1280px) 100vw, 400px"
+                        className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                      />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
+                    {user?.id && lecture.progress && lecture.progress[user.id] > 0 ? (
+                      <div className="absolute bottom-0 left-0 h-1.5 w-full bg-indigo-100">
+                        <div
+                          className="h-full bg-indigo-600 transition-width duration-200"
+                          style={{ width: `${(lecture.progress[user.id] / (lecture.durationSeconds || 1)) * 100}%` }}
+                        />
+                      </div>
+                    ) : null}
                     <span className="absolute bottom-3 right-3 rounded-md bg-slate-900/90 px-2 py-1 text-xs font-semibold text-white">
                       {lecture.duration}
                     </span>
@@ -106,6 +129,11 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
                   <div className="flex flex-1 flex-col p-5">
                     <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-900 md:text-xl">{lecture.title}</h2>
                     <p className="mt-2 line-clamp-2 min-h-10 text-sm leading-relaxed text-slate-600">{lecture.description}</p>
+                    {user?.id && lecture.progress && lecture.progress[user.id] > 0 ? (
+                      <p className="mt-1 text-xs text-indigo-500">
+                        Progress: {lecture.progress[user.id].toFixed(0)}s
+                      </p>
+                    ) : null}
 
                     <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-3">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
