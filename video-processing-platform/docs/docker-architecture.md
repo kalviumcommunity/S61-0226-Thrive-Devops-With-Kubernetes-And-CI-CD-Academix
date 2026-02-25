@@ -53,6 +53,8 @@ At a high level, Docker provides:
 - **Docker Containers**  
   Runtime instances of those images:
   - A backend container runs the FastAPI app from `backend/main.py`
+  - Endpoints include upload, status, lecture list/details, and AI enrichment.
+  - Additional features: transcript search (`/api/lectures/{slug}/search`), export (`/api/lectures/{slug}/transcript/export`), progress tracking and WebSocket updates (`/ws/progress/{slug}/{userId}`).
   - A frontend container runs the Next.js app built from `frontend/`
   - A MongoDB container runs the database process used by the backend
 

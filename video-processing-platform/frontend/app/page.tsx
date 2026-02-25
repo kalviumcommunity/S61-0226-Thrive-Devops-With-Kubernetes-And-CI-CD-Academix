@@ -75,7 +75,7 @@ export default async function Home() {
 
       <main>
         <section className="bg-gradient-to-r from-white via-indigo-50 to-amber-50">
-          <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+          <div className="mx-auto max-w-4xl px-4 py-12 md:py-16">
             <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-indigo-700 md:text-6xl">
               Next-Gen Learning
               <span className="block text-amber-500">Fault-Tolerant Streaming</span>
@@ -113,7 +113,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 py-14 md:py-16">
+        <section className="mx-auto max-w-4xl px-4 py-12 md:py-14">
           <div className="text-center">
             <h2 className="text-4xl font-semibold text-slate-900">
               The Resilient Video Pipeline

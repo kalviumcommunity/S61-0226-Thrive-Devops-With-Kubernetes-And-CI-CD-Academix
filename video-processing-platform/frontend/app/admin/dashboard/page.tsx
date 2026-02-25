@@ -337,7 +337,7 @@ export default function AdminDashboardPage() {
       <Navbar active="admin" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-6xl px-6 py-8">
+        <section className="mx-auto w-full max-w-4xl px-4 py-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-4xl font-bold text-slate-900">Admin Dashboard</h1>
