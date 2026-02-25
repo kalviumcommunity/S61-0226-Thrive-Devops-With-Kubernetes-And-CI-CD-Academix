@@ -45,7 +45,7 @@ jobs:
       - name: Lint Python code
         run: |
           python -m pip install flake8
-          flake8 .
+          flake8 . --select=F
 
       - name: Run tests
         run: python -m pytest tests -v

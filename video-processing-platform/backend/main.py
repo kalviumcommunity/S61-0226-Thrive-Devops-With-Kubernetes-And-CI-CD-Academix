@@ -91,43 +91,6 @@ class ProgressConnectionManager:
 
 progress_manager = ProgressConnectionManager()
 
-# --- helper: metadata extraction ---------------------------------------
-def extract_video_metadata(file_path: Path) -> dict[str, Any]:
-    # run ffprobe to get video width, height, size, duration
-    output = _run_subprocess([
-        "ffprobe",
-        "-v",
-        "error",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        str(file_path),
-    ])
-    if not output:
-        return {}
-    try:
-        data = json.loads(output)
-    except Exception:
-        return {}
-    meta: dict[str, Any] = {}
-    fmt = data.get("format", {})
-    if "duration" in fmt:
-        try:
-            meta["duration"] = float(fmt.get("duration", 0))
-        except Exception:
-            pass
-    if "size" in fmt:
-        meta["size_bytes"] = int(fmt.get("size", 0))
-    # look at first video stream
-    streams = data.get("streams", [])
-    for stream in streams:
-        if stream.get("codec_type") == "video":
-            meta["width"] = stream.get("width")
-            meta["height"] = stream.get("height")
-            break
-    return meta
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -188,10 +151,6 @@ class LectureUpdate(BaseModel):
     keyConcepts: list[KeyConcept] | None = None
     videoUrl: str | None = None
     transcript: list[TranscriptSegment] | None = None
-
-
-class ViewPayload(BaseModel):
-    userId: str
 
 
 class JobStatus(BaseModel):
