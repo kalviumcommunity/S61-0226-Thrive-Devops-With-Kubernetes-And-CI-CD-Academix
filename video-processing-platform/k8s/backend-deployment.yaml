@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: video-processing-platform-backend:latest
+          image: meghanamanchala/video-backend:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

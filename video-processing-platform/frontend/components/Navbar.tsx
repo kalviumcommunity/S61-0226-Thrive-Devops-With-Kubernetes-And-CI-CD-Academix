@@ -57,7 +57,7 @@ export default function Navbar({ active = "none" }: NavbarProps) {
                   Admin Dashboard
                 </Link>
                 <Link
-                  href="/admin/dashboard"
+                  href="/admin/job-monitoring"
                   className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
                     active === "monitoring" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
                   }`}
