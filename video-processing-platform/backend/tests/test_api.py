@@ -127,6 +127,8 @@ class FakeDB:
 @pytest.fixture(autouse=True)
 def override_db_dependency():
     fake_db = FakeDB()
+    app.state.liveness_ok = True
+    app.state.readiness_ok = True
     app.dependency_overrides[get_db] = lambda: fake_db
     yield
     app.dependency_overrides.clear()
@@ -137,6 +139,39 @@ def test_health():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
+
+
+def test_liveness_probe_ok():
+    response = client.get("/health/liveness")
+    assert response.status_code == 200
+    assert response.json()["status"] == "alive"
+
+
+def test_readiness_probe_ok():
+    response = client.get("/health/readiness")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+def test_readiness_probe_can_fail_without_liveness_failing():
+    toggle = client.post("/api/admin/probes/readiness", json={"enabled": False})
+    assert toggle.status_code == 200
+    assert toggle.json()["enabled"] is False
+
+    readiness = client.get("/health/readiness")
+    assert readiness.status_code == 503
+
+    liveness = client.get("/health/liveness")
+    assert liveness.status_code == 200
+
+
+def test_liveness_probe_can_be_forced_to_fail():
+    toggle = client.post("/api/admin/probes/liveness", json={"enabled": False})
+    assert toggle.status_code == 200
+    assert toggle.json()["enabled"] is False
+
+    response = client.get("/health/liveness")
+    assert response.status_code == 500
 
 def test_upload_invalid_file():
     response = client.post(

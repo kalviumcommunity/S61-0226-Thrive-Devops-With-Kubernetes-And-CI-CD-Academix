@@ -12,3 +12,7 @@ venv
 tests
 README.md
 Dockerfile*
+uploads
+*.mp4
+*.mov
+*.mkv
