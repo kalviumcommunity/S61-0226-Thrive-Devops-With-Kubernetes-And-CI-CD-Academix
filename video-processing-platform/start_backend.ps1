@@ -1,6 +1,6 @@
 # PowerShell script to start backend
 Write-Host "Starting backend..."
-cd "$PSScriptRoot\backend"
+Set-Location "$PSScriptRoot\backend"
 
 # ensure virtual environment is activated
 if (-not (Test-Path "../.venv")) {
