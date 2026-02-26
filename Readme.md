@@ -288,36 +288,6 @@ ReplicaSets track both:
 
 ---
 
-## Managing Resource Requests and Limits
-
-To ensure application stability and efficient cluster utilization, resource requests and limits have been configured for the backend deployment.
-
-### Configured Values
-- **Requests:**
-  - CPU: `100m` (0.1 cores)
-  - Memory: `128Mi`
-- **Limits:**
-  - CPU: `250m` (0.25 cores)
-  - Memory: `256Mi`
-
-### Why These Values?
-These values were chosen as a baseline for a lightweight Python FastAPI application. 
-- **100m CPU request** ensures the pod gets enough compute time to handle initial requests without being throttled.
-- **128Mi memory request** covers the base memory footprint of the application and its dependencies.
-- **Limits** are set higher to allow for occasional bursts in traffic or processing (like video metadata extraction) while preventing a single pod from consuming all node resources.
-
-### Requests vs. Limits
-- **Resource Requests:** The minimum amount of CPU/Memory that Kubernetes guarantees to a container. The scheduler uses these values to decide which node to place the pod on.
-- **Resource Limits:** The maximum amount of CPU/Memory that a container is allowed to use. 
-  - If a container exceeds its **CPU limit**, it is throttled but not killed.
-  - If a container exceeds its **Memory limit**, it is eligible for termination (OOMKilled) to protect the node's stability.
-
-### Impact on Scheduling and Consumption
-- **Scheduling:** Kubernetes only schedules a pod on a node if the node has enough unallocated resources to satisfy the pod's **requests**. It does not look at limits during scheduling.
-- **Overconsumption:** Limits prevent "noisy neighbor" scenarios where one malfunctioning or high-load container starves other containers on the same node.
-
----
-
 ## CPU & Memory Configuration
 
 ### Resource Requests
@@ -1268,87 +1238,44 @@ kubectl apply -f deployment.yaml
 * Enables scaling and rollback
 
 ---
+## Managing Resource Requests and Limits
 
-# Kubernetes Setup Guide
+To improve cluster stability and control resource usage, CPU and memory requests and limits were configured for the Deployment.
 
-This guide documents the steps taken to set up and run your video-processing-platform project on Kubernetes using Minikube.
+Configuration Added
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "250m"
+    memory: "256Mi"
+### Why These Values?
 
-## Prerequisites
-- Docker installed
-- Minikube installed
-- kubectl installed
+CPU Request (100m): Ensures the Pod gets guaranteed minimum CPU for stable execution.
 
-## Steps
+Memory Request (128Mi): Ensures the Pod is scheduled only on nodes with enough memory.
 
-### 1. Start Minikube
-```
-minikube start
-```
+CPU Limit (250m): Prevents excessive CPU usage.
 
-### 2. Build and Push Docker Images
-- Build frontend and backend Docker images.
-- Push images to Docker Hub:
-```
-docker build -t meghanamanchala/video-frontend:latest ./frontend
+Memory Limit (256Mi): Prevents the Pod from consuming too much memory and impacting other workloads.
 
-docker build -t meghanamanchala/video-backend:latest ./backend
+### How Kubernetes Uses Them
 
-docker push meghanamanchala/video-frontend:latest
-docker push meghanamanchala/video-backend:latest
-```
+Requests are used by the scheduler to decide where the Pod can run.
 
-### 3. Create Kubernetes Secrets
-- Clerk secrets:
-```
-kubectl create secret generic clerk-secrets \
-  --from-literal=publishable-key=<your_publishable_key> \
-  --from-literal=secret-key=<your_secret_key>
-```
-- Mongo secrets:
-```
-kubectl create secret generic mongo-secrets \
-  --from-literal=username=<your_mongo_username> \
-  --from-literal=password=<your_mongo_password>
-```
+Limits restrict the maximum resources the container can consume.
 
-### 4. Apply Kubernetes Manifests
-- Apply all manifests in the k8s directory:
-```
-kubectl apply -f k8s/
-```
+If memory exceeds the limit → Pod is terminated (OOMKilled).
 
-### 5. Persistent Volume Setup
-- Ensure persistent-volumes.yaml defines both PersistentVolume and PersistentVolumeClaim for backend uploads.
-- If PVC is Pending, delete and re-apply:
-```
-kubectl delete pvc backend-uploads-pvc
-kubectl apply -f k8s/persistent-volumes.yaml
-```
+If CPU exceeds the limit → CPU is throttled.
 
-### 6. Troubleshooting
-- Check pod status:
-```
-kubectl get pods
-```
-- If pods are not running, describe the pod:
-```
-kubectl describe pod <pod-name>
-```
-- Remove liveness/readiness probes from frontend deployment if they cause CrashLoopBackOff.
+### Benefits
 
-### 7. Access Services
-- List services:
-```
-kubectl get svc
-```
-- Access frontend via Minikube:
-```
-minikube service frontend-service
-```
+Prevents noisy-neighbor problems
 
-## Current Status
-- All backend, frontend, and mongo pods are running.
-- Persistent volumes and secrets are configured.
-- Probes removed from frontend deployment for stability.
+Improves cluster stability
 
----
+Enables predictable scaling
+
+Ensures fair resource distribution
