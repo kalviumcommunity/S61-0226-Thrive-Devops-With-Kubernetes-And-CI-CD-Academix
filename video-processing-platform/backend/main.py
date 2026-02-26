@@ -43,6 +43,8 @@ if GOOGLE_API_KEY:
 async def lifespan(app: FastAPI):
     # startup
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    app.state.liveness_ok = True
+    app.state.readiness_ok = True
     client = AsyncIOMotorClient(MONGO_URL)
     app.state.db_client = client
     app.state.db = client[MONGO_DB_NAME]
@@ -175,6 +177,10 @@ class DashboardSummary(BaseModel):
     completedJobs: int
     failedJobs: int
     recentJobs: list[DashboardJob]
+
+
+class ProbeTogglePayload(BaseModel):
+    enabled: bool
 
 
 def utcnow() -> datetime:
@@ -725,7 +731,58 @@ async def seed_lectures_endpoint(
 @app.get("/health")
 async def health_check(db: AsyncIOMotorDatabase = Depends(get_db)) -> dict[str, Any]:
     await db.command({"ping": 1})
-    return {"status": "healthy", "service": "video-api"}
+    liveness_ok = bool(getattr(app.state, "liveness_ok", True))
+    readiness_ok = bool(getattr(app.state, "readiness_ok", True))
+    return {
+        "status": "healthy" if (liveness_ok and readiness_ok) else "degraded",
+        "service": "video-api",
+        "liveness": "ok" if liveness_ok else "failing",
+        "readiness": "ready" if readiness_ok else "not-ready",
+    }
+
+
+@app.get("/health/liveness")
+async def liveness_probe() -> dict[str, str]:
+    if not bool(getattr(app.state, "liveness_ok", True)):
+        raise HTTPException(status_code=500, detail="Liveness probe forced to fail")
+    return {"status": "alive", "service": "video-api"}
+
+
+@app.get("/health/readiness")
+async def readiness_probe(db: AsyncIOMotorDatabase = Depends(get_db)) -> dict[str, str]:
+    if not bool(getattr(app.state, "readiness_ok", True)):
+        raise HTTPException(status_code=503, detail="Readiness probe forced to fail")
+
+    await db.command({"ping": 1})
+    return {"status": "ready", "service": "video-api"}
+
+
+@app.get("/api/admin/probes")
+async def get_probe_states() -> dict[str, bool]:
+    return {
+        "liveness": bool(getattr(app.state, "liveness_ok", True)),
+        "readiness": bool(getattr(app.state, "readiness_ok", True)),
+    }
+
+
+@app.post("/api/admin/probes/liveness")
+async def set_liveness_probe(payload: ProbeTogglePayload) -> dict[str, Any]:
+    app.state.liveness_ok = payload.enabled
+    return {
+        "probe": "liveness",
+        "enabled": bool(app.state.liveness_ok),
+        "message": "Liveness probe state updated",
+    }
+
+
+@app.post("/api/admin/probes/readiness")
+async def set_readiness_probe(payload: ProbeTogglePayload) -> dict[str, Any]:
+    app.state.readiness_ok = payload.enabled
+    return {
+        "probe": "readiness",
+        "enabled": bool(app.state.readiness_ok),
+        "message": "Readiness probe state updated",
+    }
 
 
 @app.post("/api/upload")

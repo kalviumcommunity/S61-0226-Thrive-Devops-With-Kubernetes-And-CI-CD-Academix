@@ -3,10 +3,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: backend-uploads-pvc
 spec:
-  storageClassName: ""   
+  storageClassName: hostpath
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 5Gi
-  volumeName: backend-uploads-pv

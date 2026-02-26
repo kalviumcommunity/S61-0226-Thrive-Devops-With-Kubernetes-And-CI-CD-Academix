@@ -33,6 +33,13 @@ Docker Desktop (Kubernetes with Kubeadm)
 - Lets us debug and iterate on deployments, services, and scaling locally before production.
 - Prepares us for cloud deployments and DevOps workflows.
 
+## Health Probe Demonstration
+- To demonstrate Sprint #3 liveness/readiness behavior, follow:
+  - `k8s/health-probes-demo.md`
+- This includes observable proof of:
+  - Readiness failure removing a Pod from service endpoints
+  - Liveness failure triggering container restart (self-healing)
+
 ## Example Output
 ```
 $ kubectl get nodes
