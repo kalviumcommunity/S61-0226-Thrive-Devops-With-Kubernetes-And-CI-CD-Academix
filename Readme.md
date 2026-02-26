@@ -288,6 +288,36 @@ ReplicaSets track both:
 
 ---
 
+## Managing Resource Requests and Limits
+
+To ensure application stability and efficient cluster utilization, resource requests and limits have been configured for the backend deployment.
+
+### Configured Values
+- **Requests:**
+  - CPU: `100m` (0.1 cores)
+  - Memory: `128Mi`
+- **Limits:**
+  - CPU: `250m` (0.25 cores)
+  - Memory: `256Mi`
+
+### Why These Values?
+These values were chosen as a baseline for a lightweight Python FastAPI application. 
+- **100m CPU request** ensures the pod gets enough compute time to handle initial requests without being throttled.
+- **128Mi memory request** covers the base memory footprint of the application and its dependencies.
+- **Limits** are set higher to allow for occasional bursts in traffic or processing (like video metadata extraction) while preventing a single pod from consuming all node resources.
+
+### Requests vs. Limits
+- **Resource Requests:** The minimum amount of CPU/Memory that Kubernetes guarantees to a container. The scheduler uses these values to decide which node to place the pod on.
+- **Resource Limits:** The maximum amount of CPU/Memory that a container is allowed to use. 
+  - If a container exceeds its **CPU limit**, it is throttled but not killed.
+  - If a container exceeds its **Memory limit**, it is eligible for termination (OOMKilled) to protect the node's stability.
+
+### Impact on Scheduling and Consumption
+- **Scheduling:** Kubernetes only schedules a pod on a node if the node has enough unallocated resources to satisfy the pod's **requests**. It does not look at limits during scheduling.
+- **Overconsumption:** Limits prevent "noisy neighbor" scenarios where one malfunctioning or high-load container starves other containers on the same node.
+
+---
+
 ## CPU & Memory Configuration
 
 ### Resource Requests
