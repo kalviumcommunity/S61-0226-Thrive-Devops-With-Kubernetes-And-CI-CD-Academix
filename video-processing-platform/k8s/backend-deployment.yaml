@@ -6,6 +6,8 @@ metadata:
     app: video-backend
 spec:
   replicas: 3
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 60
   selector:
     matchLabels:
       app: video-backend
@@ -21,7 +23,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: meghanamanchala/video-backend:latest
+          image: video-processing-platform-backend:v1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -44,31 +46,36 @@ spec:
               value: "/app/uploads"
             - name: MAX_UPLOAD_BYTES
               value: "1073741824"
+
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
+
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 15
             failureThreshold: 3
+
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
+            failureThreshold: 3
+
           resources:
             requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
               cpu: "250m"
               memory: "256Mi"
-            limits:
-              cpu: "1000m"
-              memory: "1Gi"
+
       volumes:
         - name: uploads
           persistentVolumeClaim:
             claimName: backend-uploads-pvc
-      restartPolicy: Always
