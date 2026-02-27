@@ -1,0 +1,56 @@
+# Default values for video-processing-platform.
+
+# Backend configuration
+backend:
+  replicaCount: 3
+  image:
+    repository: video-processing-platform-backend
+    tag: v1
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  persistence:
+    size: 5Gi
+
+# Frontend configuration
+frontend:
+  replicaCount: 3
+  image:
+    repository: meghanamanchala/video-frontend
+    tag: latest
+    pullPolicy: Always
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# MongoDB configuration
+mongodb:
+  replicaCount: 1
+  image:
+    repository: mongo
+    tag: 7-jammy
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
