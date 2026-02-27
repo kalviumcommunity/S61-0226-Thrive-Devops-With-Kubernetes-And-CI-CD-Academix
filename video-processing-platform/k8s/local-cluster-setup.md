@@ -40,6 +40,16 @@ Docker Desktop (Kubernetes with Kubeadm)
   - Readiness failure removing a Pod from service endpoints
   - Liveness failure triggering container restart (self-healing)
 
+## Rolling Update and Rollback Demonstration
+- To demonstrate Sprint #3 rolling update + rollback behavior, follow:
+  - `k8s/rolling-updates-rollback-demo.md`
+- Optional automation script for the same flow:
+  - `k8s/rollout-rollback-demo.ps1`
+- This includes observable proof of:
+  - Zero-downtime rolling update to a new version
+  - Failed rollout simulation
+  - Recovery using `kubectl rollout undo`
+
 ## Example Output
 ```
 $ kubectl get nodes
