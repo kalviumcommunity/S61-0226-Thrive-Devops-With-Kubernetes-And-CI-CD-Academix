@@ -999,6 +999,73 @@ Each Dockerfile instruction creates a new layer. Docker caches these layers to s
 
 If an early layer changes, all subsequent layers must be rebuilt. Therefore, instruction order directly affects build performance.
 
+---
+
+# Helm-Based Deployment – Sprint #3
+
+## Overview
+
+As part of Sprint #3, the application deployment has been migrated from raw Kubernetes manifests to a **Helm Chart**. Helm is a package manager for Kubernetes that simplifies the deployment, management, and scaling of containerized applications.
+
+## Why Helm?
+
+- **Reusability**: One chart can deploy to Dev, Staging, and Production by simply changing the `values.yaml`.
+- **Versioning**: Every deployment is a "release" with a version number, making tracking changes easy.
+- **Atomic Rollbacks**: If a deployment fails, you can roll back to the last known good state with a single command.
+- **Templating**: Hardcoded values in YAML are replaced with placeholders, allowing dynamic configuration.
+
+## Chart Structure
+
+The Helm chart is located in `charts/video-processing-platform/`:
+
+- `Chart.yaml`: Metadata about the chart (name, version, description).
+- `values.yaml`: The default configuration for the entire application.
+- `templates/`: Parameterized Kubernetes manifests for Backend, Frontend, and MongoDB.
+- `_helpers.tpl`: Reusable logic for consistent naming and labeling across resources.
+
+## Key Helm Commands
+
+### 1. Install/Deploy
+Deploys the application for the first time.
+```powershell
+helm install vpp ./charts/video-processing-platform
+```
+
+### 2. Upgrade
+Applies changes to the deployment (e.g., updating an image tag or replica count).
+```powershell
+helm upgrade vpp ./charts/video-processing-platform --set backend.replicaCount=5
+```
+
+### 3. Rollback
+Reverts to a previous revision if something goes wrong.
+```powershell
+helm rollback vpp 1
+```
+
+### 4. History & Status
+Check the release history and current status.
+```powershell
+helm history vpp
+helm status vpp
+```
+
+### 5. Uninstall
+Removes all resources associated with the release.
+```powershell
+helm uninstall vpp
+```
+
+## Parameterized Values
+
+Key parameters available in `values.yaml` include:
+- `replicaCount`: Number of pods for each service.
+- `image.repository` & `image.tag`: Container image details.
+- `service.type` & `service.port`: Networking configuration.
+- `resources.requests` & `resources.limits`: CPU/Memory allocation.
+- `persistence.size`: Storage size for databases and uploads.
+
+
 ### Optimization Strategy
 
 1. Place rarely changing instructions early.
