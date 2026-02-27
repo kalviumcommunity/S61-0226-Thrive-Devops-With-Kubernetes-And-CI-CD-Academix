@@ -131,6 +131,9 @@ class Lecture(BaseModel):
     transcript: list[TranscriptSegment] = []
     # map of userId -> seconds watched
     progress: dict[str, float] = {}
+    filename: str | None = None
+    isDeleted: bool = False
+    lastAction: str = "linked"  
 
 
 class ViewPayload(BaseModel):
@@ -153,6 +156,9 @@ class LectureUpdate(BaseModel):
     keyConcepts: list[KeyConcept] | None = None
     videoUrl: str | None = None
     transcript: list[TranscriptSegment] | None = None
+    filename: str | None = None
+    isDeleted: bool | None = None
+    lastAction: str | None = None
 
 
 class JobStatus(BaseModel):
@@ -232,6 +238,9 @@ def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
             str(k): float(v)
             for k, v in (doc.get("progress") or {}).items()
         },
+        filename=doc.get("filename"),
+        isDeleted=doc.get("isDeleted", False),
+        lastAction=doc.get("lastAction", "linked"),
     )
 
 
@@ -847,6 +856,7 @@ async def upload_video(
         "updated_at": created_at,
         "source_job_id": job_id,
         "viewedBy": [],
+        "filename": f"{job_id}_{sanitized_name}",
     }
 
     try:
@@ -1226,6 +1236,8 @@ async def create_lecture(
     doc = lecture.model_dump()
     doc["created_at"] = now
     doc["updated_at"] = now
+    if not doc.get("filename"):
+        doc["filename"] = ""
     await db.lectures.insert_one(doc)
     return lecture
 
@@ -1245,6 +1257,8 @@ async def update_lecture(
         return lecture_from_doc(existing)
 
     updates["updated_at"] = utcnow()
+    if "filename" not in updates:
+        updates["filename"] = existing.get("filename", "")
     await db.lectures.update_one({"slug": slug}, {"$set": updates})
 
     updated = await db.lectures.find_one({"slug": slug})
