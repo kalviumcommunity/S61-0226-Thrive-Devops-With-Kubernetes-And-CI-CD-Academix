@@ -86,21 +86,6 @@ export default async function Home() {
               captions—all backed by a resilient job processing pipeline.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
-              <SignedOut>
-                <Link
-                  href="/login"
-                  className="rounded-lg bg-indigo-700 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800"
-                >
-                  Login
-                </Link>
-                <Link
-                  href="/sign-up"
-                  className="rounded-lg border border-indigo-700 bg-white px-6 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
-                >
-                  Sign Up
-                </Link>
-              </SignedOut>
-
               <SignedIn>
                 <Link
                   href={role === "admin" ? "/admin/dashboard" : "/student"}

@@ -1,5 +1,41 @@
 "use client";
 
+// Helper to determine action for a job row (DB-driven)
+function getAction(job: any, lectures: Lecture[]) {
+  const lecture = lectures.find(
+    (l) => l.source_job_id === job.id || l.videoUrl?.includes(job.id)
+  );
+  if (!lecture) return "Orphan";
+  if (lecture.isDeleted) return "Deleted";
+  if (lecture.lastAction === "edited") return "Edited";
+  if (
+    lecture.updatedAt &&
+    lecture.createdAt &&
+    lecture.updatedAt !== lecture.createdAt
+  ) {
+    return "Updated";
+  }
+  return "Linked";
+}
+
+// Helper to render color badge for action
+function getActionBadge(action: string) {
+  switch (action) {
+    case "Updated":
+      return <span className="text-green-600 font-semibold">🟢 Updated</span>;
+    case "Edited":
+      return <span className="text-yellow-600 font-semibold">🟡 Edited</span>;
+    case "Deleted":
+      return <span className="text-red-600 font-semibold">🔴 Deleted</span>;
+    case "Linked":
+      return <span className="text-purple-600 font-semibold">🟣 Linked</span>;
+    case "Orphan":
+      return <span className="text-slate-400 font-semibold">⚪ Orphan</span>;
+    default:
+      return <span>{action}</span>;
+  }
+}
+
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import Navbar from "../../../components/Navbar";
@@ -17,6 +53,8 @@ function formatUpdatedAt(value: string): string {
 }
 
 const JobMonitoringPage = () => {
+    // Debug state for UI
+    const [showDebug, setShowDebug] = useState(false);
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary | null>(null);
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [selectedLectureSlug, setSelectedLectureSlug] = useState<string | null>(null);
@@ -25,6 +63,11 @@ const JobMonitoringPage = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
+  // Debug: Log lectures on change
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[DEBUG] lectures:", lectures);
+  }, [lectures]);
 
   useEffect(() => {
     void loadDashboardSummary();
@@ -61,11 +104,12 @@ const JobMonitoringPage = () => {
       await updateLecture(selectedLectureSlug, {
         title: editTitle.trim(),
         description: editDescription.trim(),
+        lastAction: "edited"
       });
       setLectures((current) =>
         current.map((lecture) =>
           lecture.slug === selectedLectureSlug
-            ? { ...lecture, title: editTitle.trim(), description: editDescription.trim() }
+            ? { ...lecture, title: editTitle.trim(), description: editDescription.trim(), lastAction: "edited" }
             : lecture,
         ),
       );
@@ -80,8 +124,17 @@ const JobMonitoringPage = () => {
 
   const handleDeleteLecture = async (slug: string) => {
     try {
-      await deleteLecture(slug);
-      setLectures((current) => current.filter((lecture) => lecture.slug !== slug));
+      // Find the lecture before deleting
+      const lecture = lectures.find(l => l.slug === slug);
+      // Soft delete: update isDeleted and lastAction
+      if (lecture) {
+        await updateLecture(slug, { isDeleted: true, lastAction: "deleted" });
+        setLectures((current) =>
+          current.map((l) =>
+            l.slug === slug ? { ...l, isDeleted: true, lastAction: "deleted" } : l
+          )
+        );
+      }
       if (selectedLectureSlug === slug) {
         setSelectedLectureSlug(null);
         setEditTitle("");
@@ -171,7 +224,7 @@ const JobMonitoringPage = () => {
                               {retryingJobId === job.id ? "..." : "Retry"}
                             </button>
                           ) : (
-                            <span className="text-[11px] text-slate-400">—</span>
+                            <span className="text-[11px]">{getActionBadge(getAction(job, lectures))}</span>
                           )}
                         </div>
                       </div>

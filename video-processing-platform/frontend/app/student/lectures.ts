@@ -22,12 +22,29 @@ export type Lecture = {
     text: string;
   }>;
   progress?: Record<string, number>;
+  filename?: string | null;
+  source_job_id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  isDeleted?: boolean;
+  lastAction?: "linked" | "edited" | "deleted";
 };
 
 export type LectureUpdate = Partial<
   Pick<
     Lecture,
-    "title" | "description" | "duration" | "image" | "publishedDate" | "views" | "aiSummary" | "videoUrl" | "keyConcepts" | "transcript"
+    | "title"
+    | "description"
+    | "duration"
+    | "image"
+    | "publishedDate"
+    | "views"
+    | "aiSummary"
+    | "videoUrl"
+    | "keyConcepts"
+    | "transcript"
+    | "isDeleted"
+    | "lastAction"
   >
 >;
 
