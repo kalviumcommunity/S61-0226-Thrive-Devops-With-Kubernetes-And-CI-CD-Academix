@@ -34,6 +34,8 @@ BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+ENABLE_AI_SUMMARY = os.getenv("ENABLE_AI_SUMMARY", "true").lower() == "true"
+ENABLE_LIVE_SUMMARY = os.getenv("ENABLE_LIVE_SUMMARY", "true").lower() == "true"
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 if GOOGLE_API_KEY:
@@ -390,6 +392,9 @@ def build_key_concepts(title: str, transcript: list[dict[str, str]]) -> list[dic
 
 
 async def generate_ai_summary(title: str, description: str, transcript: list[dict[str, str]]) -> str:
+    if not ENABLE_AI_SUMMARY:
+        return f"{title} summary generation is disabled for this environment."
+
     if not GOOGLE_API_KEY:
         return f"{title} covers practical concepts with a timestamped transcript for reference."
 
@@ -467,6 +472,9 @@ Transcript:"""
 
 async def generate_ai_segment_summary(title: str, description: str, snippet: str) -> str:
     """Use AI to summarize a small excerpt of the lecture text."""
+    if not ENABLE_LIVE_SUMMARY:
+        return "(live summary disabled in this environment)"
+
     if not GOOGLE_API_KEY:
         return "(live summary unavailable)"
     try:
@@ -577,6 +585,7 @@ async def enrich_existing_lectures(db: AsyncIOMotorDatabase) -> None:
         source_job_id = lecture.get("source_job_id")
         thumbnail_rel = str(lecture.get("image", "") or "")
         video_url = str(lecture.get("videoUrl", "") or "")
+        file_path: Path | None = None
 
         if source_job_id:
             job_doc = await db.jobs.find_one({"job_id": source_job_id})
@@ -1310,7 +1319,6 @@ async def regenerate_ai_transcript(
     title = str(doc.get("title", "Lecture"))
     description = str(doc.get("description", ""))
     duration_seconds = parse_duration_to_seconds(str(doc.get("duration", "0:00")))
-
     transcript = await generate_ai_transcript(title, description, duration_seconds)
     await db.lectures.update_one(
         {"slug": slug},

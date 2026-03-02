@@ -6,9 +6,20 @@ on:
     paths:
       - video-processing-platform/backend/**
       - video-processing-platform/frontend/**
+      - video-processing-platform/charts/**
       - video-processing-platform/k8s/**
+      - video-processing-platform/scripts/**
       - .github/workflows/deploy-k8s.yml
   workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment values file
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -20,6 +31,7 @@ permissions:
 env:
   IMAGE_TAG: ${{ github.sha }}
   K8S_NAMESPACE: default
+  HELM_RELEASE: video-platform
 
 jobs:
   backend-ci:
@@ -44,6 +56,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Install ffmpeg (metadata extraction)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Run tests
         run: python -m pytest tests -v
@@ -188,6 +203,18 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Resolve deployment environment
+        run: |
+          DEPLOY_ENV="${{ github.event.inputs.environment }}"
+          if [ -z "$DEPLOY_ENV" ]; then
+            DEPLOY_ENV="dev"
+          fi
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "VALUES_FILE=video-processing-platform/charts/video-processing-platform/values-$DEPLOY_ENV.yaml" >> "$GITHUB_ENV"
+
       - name: Configure kubeconfig
         run: |
           if [ -z "${{ secrets.KUBE_CONFIG }}" ]; then
@@ -203,34 +230,34 @@ jobs:
             echo "Using raw kubeconfig secret"
           fi
 
-      - name: Apply manifests
+      - name: Validate deployment inputs
         run: |
-          # Validate required secrets already exist in the cluster
+          if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ]; then
+            echo "DOCKER_HUB_USERNAME secret is required."
+            exit 1
+          fi
+
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "Values file not found: $VALUES_FILE"
+            exit 1
+          fi
+
           kubectl get secret clerk-secrets -n "$K8S_NAMESPACE" >/dev/null
           kubectl get secret mongo-secrets -n "$K8S_NAMESPACE" >/dev/null
-          
-          # Apply persistent volumes
-          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/persistent-volumes.yaml
-          
-          # Apply MongoDB (database layer)
-          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/mongo-deployment.yaml
-          
-          # Wait for MongoDB to be ready
-          kubectl wait --for=condition=ready pod -l app=mongo -n "$K8S_NAMESPACE" --timeout=120s || echo "MongoDB not ready yet, continuing..."
-          
-          # Apply services
-          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/services.yaml
-          
-          # Apply application deployments
-          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/backend-deployment.yaml
-          kubectl apply -n "$K8S_NAMESPACE" -f video-processing-platform/k8s/frontend-deployment.yaml
 
-      - name: Update deployment images
+      - name: Helm upgrade/install
         run: |
-          kubectl set image deployment/backend backend=${{ needs.build-backend-image.outputs.image }} -n "$K8S_NAMESPACE"
-          kubectl set image deployment/frontend frontend=${{ needs.build-frontend-image.outputs.image }} -n "$K8S_NAMESPACE"
+          helm upgrade --install "$HELM_RELEASE" video-processing-platform/charts/video-processing-platform \
+            --namespace "$K8S_NAMESPACE" \
+            --create-namespace \
+            -f video-processing-platform/charts/video-processing-platform/values.yaml \
+            -f "$VALUES_FILE" \
+            --set backend.image.repository=${{ secrets.DOCKER_HUB_USERNAME }}/video-backend \
+            --set backend.image.tag=${{ env.IMAGE_TAG }} \
+            --set frontend.image.repository=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend \
+            --set frontend.image.tag=${{ env.IMAGE_TAG }}
 
       - name: Verify rollout
         run: |
-          kubectl rollout status deployment/backend -n "$K8S_NAMESPACE" --timeout=240s
-          kubectl rollout status deployment/frontend -n "$K8S_NAMESPACE" --timeout=240s
+          kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-backend -n "$K8S_NAMESPACE" --timeout=240s
+          kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-frontend -n "$K8S_NAMESPACE" --timeout=240s

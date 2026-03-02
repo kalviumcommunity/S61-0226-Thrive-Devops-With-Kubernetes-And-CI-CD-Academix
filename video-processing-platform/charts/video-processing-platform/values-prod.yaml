@@ -1,0 +1,43 @@
+backend:
+  replicaCount: 4
+  image:
+    tag: stable
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  featureFlags:
+    ENABLE_AI_SUMMARY: "true"
+    ENABLE_LIVE_SUMMARY: "true"
+  env:
+    MONGO_DB_NAME: video_platform
+    UPLOAD_DIR: /app/uploads
+    MAX_UPLOAD_BYTES: "1073741824"
+
+frontend:
+  replicaCount: 3
+  image:
+    tag: stable
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 750m
+      memory: 768Mi
+  featureFlags:
+    NEXT_PUBLIC_ENABLE_ADVANCED_INSIGHTS: "true"
+
+mongodb:
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+    limits:
+      cpu: 1200m
+      memory: 2Gi
+  persistence:
+    size: 20Gi

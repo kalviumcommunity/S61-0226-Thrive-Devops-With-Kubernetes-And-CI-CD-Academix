@@ -33,6 +33,14 @@ spec:
                 secretKeyRef:
                   name: clerk-secrets
                   key: secret-key
+            {{- range $key, $value := .Values.frontend.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.frontend.featureFlags }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
 ---
