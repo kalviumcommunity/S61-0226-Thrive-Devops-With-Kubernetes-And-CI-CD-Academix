@@ -10,7 +10,7 @@ from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(MONGO_URL)
     app.state.db_client = client
     app.state.db = client[MONGO_DB_NAME]
+    await ensure_db_indexes(app.state.db)
     await seed_demo_lectures(app.state.db)
     await enrich_existing_lectures(app.state.db)
     yield
@@ -206,6 +207,12 @@ def get_db() -> AsyncIOMotorDatabase:
     return db
 
 
+async def ensure_db_indexes(db: AsyncIOMotorDatabase) -> None:
+    await db.lectures.create_index("created_at")
+    await db.lectures.create_index("title")
+    await db.lectures.create_index("description")
+
+
 def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
     # compute numeric seconds for convenience
     dur_secs: float | None = None
@@ -301,7 +308,7 @@ def extract_video_metadata(file_path: Path) -> dict[str, Any]:
         return {}
 
 
-def extract_duration_seconds(file_path: Path) -> float:
+def extract_duration_seconds(media_source: str) -> float:
     output = _run_subprocess(
         [
             "ffprobe",
@@ -311,7 +318,7 @@ def extract_duration_seconds(file_path: Path) -> float:
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            str(file_path),
+            media_source,
         ]
     )
     if not output:
@@ -569,17 +576,23 @@ async def enrich_existing_lectures(db: AsyncIOMotorDatabase) -> None:
 
         source_job_id = lecture.get("source_job_id")
         thumbnail_rel = str(lecture.get("image", "") or "")
+        video_url = str(lecture.get("videoUrl", "") or "")
 
         if source_job_id:
             job_doc = await db.jobs.find_one({"job_id": source_job_id})
             file_path = Path(job_doc.get("file_path", "")) if job_doc else None
             if file_path and file_path.exists():
-                probed_seconds = extract_duration_seconds(file_path)
+                probed_seconds = extract_duration_seconds(str(file_path))
                 if probed_seconds > 0:
                     duration_seconds = probed_seconds
                 thumbnail_path = UPLOAD_DIR / "thumbnails" / f"{source_job_id}.jpg"
                 if generate_thumbnail(file_path, thumbnail_path):
                     thumbnail_rel = f"/api/video/{source_job_id}/thumbnail"
+
+        if video_url.startswith(("http://", "https://")):
+            remote_probed_seconds = extract_duration_seconds(video_url)
+            if remote_probed_seconds > 0:
+                duration_seconds = remote_probed_seconds
 
         if duration_seconds <= 0:
             duration_seconds = estimate_duration_seconds_from_text(
@@ -1136,9 +1149,21 @@ async def export_transcript(
 
 @app.get("/api/lectures", response_model=list[Lecture])
 async def list_lectures(
+    q: str | None = Query(default=None, max_length=120),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> list[Lecture]:
-    cursor = db.lectures.find({}).sort("created_at", -1)
+    filters: dict[str, Any] = {}
+    search_query = (q or "").strip()
+    if search_query:
+        escaped = re.escape(search_query)
+        filters = {
+            "$or": [
+                {"title": {"$regex": escaped, "$options": "i"}},
+                {"description": {"$regex": escaped, "$options": "i"}},
+            ]
+        }
+
+    cursor = db.lectures.find(filters).sort("created_at", -1)
     results: list[Lecture] = []
     async for doc in cursor:
         results.append(lecture_from_doc(doc))
@@ -1356,7 +1381,7 @@ async def transcode(job_id: str) -> None:
         title = str(job_doc.get("title", "Lecture")) if job_doc else "Lecture"
         description = str(job_doc.get("description", "Uploaded lecture")) if job_doc else "Uploaded lecture"
 
-        duration_seconds = extract_duration_seconds(file_path) if file_path and file_path.exists() else 0.0
+        duration_seconds = extract_duration_seconds(str(file_path)) if file_path and file_path.exists() else 0.0
         duration_formatted = format_duration(duration_seconds) if duration_seconds > 0 else "00:00"
 
         # pull full metadata (width/height/size) if ffprobe is available

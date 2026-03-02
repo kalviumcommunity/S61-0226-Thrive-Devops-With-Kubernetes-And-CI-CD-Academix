@@ -48,8 +48,13 @@ export type LectureUpdate = Partial<
   >
 >;
 
-export async function fetchLectures(): Promise<Lecture[]> {
-  return await fetchJson<Lecture[]>(`${apiBaseUrl}/api/lectures`, {
+export async function fetchLectures(query?: string): Promise<Lecture[]> {
+  const trimmedQuery = query?.trim();
+  const endpoint = trimmedQuery
+    ? `${apiBaseUrl}/api/lectures?q=${encodeURIComponent(trimmedQuery)}`
+    : `${apiBaseUrl}/api/lectures`;
+
+  return await fetchJson<Lecture[]>(endpoint, {
     headers: {},
   });
 }
