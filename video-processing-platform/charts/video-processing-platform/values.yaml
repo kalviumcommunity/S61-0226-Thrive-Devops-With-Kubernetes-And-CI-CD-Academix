@@ -10,6 +10,7 @@ backend:
   service:
     type: ClusterIP
     port: 8000
+    targetPort: 8000
   resources:
     requests:
       cpu: 100m
@@ -19,6 +20,13 @@ backend:
       memory: 256Mi
   persistence:
     size: 5Gi
+  featureFlags:
+    ENABLE_AI_SUMMARY: "true"
+    ENABLE_LIVE_SUMMARY: "true"
+  env:
+    MONGO_DB_NAME: video_platform
+    UPLOAD_DIR: /app/uploads
+    MAX_UPLOAD_BYTES: "1073741824"
 
 # Frontend configuration
 frontend:
@@ -38,6 +46,10 @@ frontend:
     limits:
       cpu: 500m
       memory: 512Mi
+  featureFlags:
+    NEXT_PUBLIC_ENABLE_ADVANCED_INSIGHTS: "true"
+  env:
+    INTERNAL_API_URL: "http://video-processing-platform-backend-service:8000"
 
 # MongoDB configuration
 mongodb:

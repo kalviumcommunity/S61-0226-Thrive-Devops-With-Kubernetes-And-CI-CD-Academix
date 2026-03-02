@@ -65,7 +65,6 @@ const JobMonitoringPage = () => {
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
   // Debug: Log lectures on change
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.log("[DEBUG] lectures:", lectures);
   }, [lectures]);
 
