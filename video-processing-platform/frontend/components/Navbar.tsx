@@ -22,80 +22,103 @@ export default function Navbar({ active = "none" }: NavbarProps) {
   const isAdmin = role === "admin";
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex h-12 w-full max-w-4xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 text-base font-semibold text-indigo-700">
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-indigo-600 text-white">
-            <Clapperboard className="h-4 w-4" />
-          </span>
+  <header className="sticky top-0 z-50 w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-xl">
+    <div className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-6">
+      
+      {/* LOGO */}
+      <Link
+        href="/"
+        className="group flex items-center gap-3 text-xl font-semibold tracking-tight"
+      >
+        <span className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-md transition group-hover:scale-105">
+          <Clapperboard className="h-5 w-5" />
+        </span>
+        <span className="bg-gradient-to-r from-indigo-700 to-violet-600 bg-clip-text text-transparent">
           Academix
-        </Link>
+        </span>
+      </Link>
 
-        <SignedIn>
-          <nav className="hidden items-center gap-5 text-xs text-slate-500 md:flex">
-            {!isAdmin ? (
+      {/* NAV LINKS */}
+      <SignedIn>
+        <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
+          {!isAdmin && (
+            <Link
+              href="/student"
+              className={`relative flex items-center gap-2 transition hover:text-indigo-600 ${
+                active === "library" ? "text-indigo-600" : ""
+              }`}
+            >
+              <BookOpen className="h-4 w-4" />
+              Student Library
+              {active === "library" && (
+                <span className="absolute -bottom-2 left-0 h-0.5 w-full bg-indigo-600 rounded-full" />
+              )}
+            </Link>
+          )}
+
+          {isAdmin && (
+            <>
               <Link
-                href="/student"
-                className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                  active === "library" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
+                href="/admin/dashboard"
+                className={`relative flex items-center gap-2 transition hover:text-indigo-600 ${
+                  active === "admin" ? "text-indigo-600" : ""
                 }`}
               >
-                <BookOpen className="h-3.5 w-3.5" />
-                Student Library
+                <LayoutDashboard className="h-4 w-4" />
+                Admin Dashboard
+                {active === "admin" && (
+                  <span className="absolute -bottom-2 left-0 h-0.5 w-full bg-indigo-600 rounded-full" />
+                )}
               </Link>
-            ) : null}
 
-            {isAdmin ? (
-              <>
-                <Link
-                  href="/admin/dashboard"
-                  className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                    active === "admin" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
-                  }`}
-                >
-                  <LayoutDashboard className="h-3.5 w-3.5" />
-                  Admin Dashboard
-                </Link>
-                <Link
-                  href="/admin/job-monitoring"
-                  className={`inline-flex items-center gap-1.5 hover:text-indigo-700 ${
-                    active === "monitoring" ? "rounded-md bg-indigo-100 px-2 py-0.5 text-indigo-700" : ""
-                  }`}
-                >
-                  <Gauge className="h-3.5 w-3.5" />
-                  Job Monitoring
-                </Link>
-              </>
-            ) : null}
-          </nav>
+              <Link
+                href="/admin/job-monitoring"
+                className={`relative flex items-center gap-2 transition hover:text-indigo-600 ${
+                  active === "monitoring" ? "text-indigo-600" : ""
+                }`}
+              >
+                <Gauge className="h-4 w-4" />
+                Job Monitoring
+                {active === "monitoring" && (
+                  <span className="absolute -bottom-2 left-0 h-0.5 w-full bg-indigo-600 rounded-full" />
+                )}
+              </Link>
+            </>
+          )}
+        </nav>
 
+        {/* RIGHT SIDE */}
+        <div className="flex items-center gap-4">
           <SignOutButton>
-            <button className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-              <LogOut className="h-3.5 w-3.5" />
+            <button className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
+              <LogOut className="h-4 w-4" />
               Sign Out
             </button>
           </SignOutButton>
-        </SignedIn>
+        </div>
+      </SignedIn>
 
-        <SignedOut>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Login
-            </Link>
-            <Link
-              href="/sign-up"
-              className="inline-flex items-center gap-1.5 rounded-full bg-indigo-700 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-800"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              Sign Up
-            </Link>
-          </div>
-        </SignedOut>
-      </div>
-    </header>
-  );
+      {/* SIGNED OUT */}
+      <SignedOut>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md"
+          >
+            <LogIn className="h-4 w-4" />
+            Login
+          </Link>
+
+          <Link
+            href="/sign-up"
+            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+          >
+            <UserPlus className="h-4 w-4" />
+            Get Started
+          </Link>
+        </div>
+      </SignedOut>
+    </div>
+  </header>
+);
 }

@@ -70,67 +70,104 @@ export default async function Home() {
   const role = (sessionRole ?? userRole ?? "").toLowerCase().trim();
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <Navbar active="none" />
+  <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900">
+    <Navbar active="none" />
 
-      <main>
-        <section className="bg-gradient-to-r from-white via-indigo-50 to-amber-50">
-          <div className="mx-auto max-w-4xl px-4 py-12 md:py-16">
-            <h1 className="max-w-3xl text-5xl font-bold leading-tight tracking-tight text-indigo-700 md:text-6xl">
-              Next-Gen Learning
-              <span className="block text-amber-500">Fault-Tolerant Streaming</span>
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-500">
-              Academix is a world-class educational platform designed for scale. Upload
-              lectures once, transcode them for any device, and stream with AI-enhanced
-              captions—all backed by a resilient job processing pipeline.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-4">
-              <SignedIn>
-                <Link
-                  href={role === "admin" ? "/admin/dashboard" : "/student"}
-                  className="rounded-lg bg-indigo-700 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800"
-                >
-                  Go to Dashboard
-                </Link>
-              </SignedIn>
-            </div>
+    <main>
+      {/* HERO SECTION */}
+      <section className="relative overflow-hidden">
+        {/* Decorative Background Blur */}
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute left-1/2 top-[-150px] h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-indigo-200 blur-3xl opacity-30" />
+        </div>
+
+        <div className="mx-auto max-w-5xl px-6 py-20 text-center">
+          <span className="inline-block rounded-full bg-indigo-100 px-4 py-1 text-sm font-medium text-indigo-700">
+            AI-Powered Learning Platform
+          </span>
+
+          <h1 className="mt-6 text-5xl font-extrabold leading-tight tracking-tight md:text-6xl">
+            Next-Gen Learning
+            <span className="block bg-gradient-to-r from-indigo-600 to-amber-500 bg-clip-text text-transparent">
+              Fault-Tolerant Streaming
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">
+            Academix is a scalable educational platform designed for modern
+            classrooms. Upload lectures once, transcode automatically, and
+            stream with AI-enhanced captions — all backed by a resilient job
+            processing pipeline.
+          </p>
+
+          <div className="mt-10 flex flex-wrap justify-center gap-4">
+            <SignedIn>
+              <Link
+                href={role === "admin" ? "/admin/dashboard" : "/student"}
+                className="rounded-lg bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-1 hover:bg-indigo-700"
+              >
+                Go to Dashboard
+              </Link>
+            </SignedIn>
+
+            <Link
+              href="#features"
+              className="rounded-lg border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+            >
+              Explore Features
+            </Link>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="mx-auto max-w-4xl px-4 py-12 md:py-14">
-          <div className="text-center">
-            <h2 className="text-4xl font-semibold text-slate-900">
-              The Resilient Video Pipeline
-            </h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-500">
-              Built to handle thousands of concurrent uploads and viewers with a
-              zero-downtime architecture.
-            </p>
-          </div>
+      {/* FEATURES SECTION */}
+      <section
+        id="features"
+        className="mx-auto max-w-6xl px-6 py-20"
+      >
+        <div className="text-center">
+          <h2 className="text-4xl font-bold text-slate-900">
+            The Resilient Video Pipeline
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-base text-slate-600">
+            Built to handle thousands of concurrent uploads and viewers with
+            zero-downtime architecture.
+          </p>
+        </div>
 
-          <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => {
-              const Icon = feature.icon;
+        <div className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature) => {
+            const Icon = feature.icon;
 
-              return (
-                <article
-                  key={feature.title}
-                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-                >
-                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 text-amber-500">
-                    <Icon className="h-4 w-4" />
+            return (
+              <article
+                key={feature.title}
+                className="group relative rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-xl"
+              >
+                {/* Gradient border on hover */}
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-indigo-200 to-amber-200 opacity-0 blur-xl transition group-hover:opacity-30" />
+
+                <div className="relative z-10">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white">
+                    <Icon className="h-6 w-6" />
                   </div>
-                  <h3 className="mt-4 text-xl font-semibold text-slate-900">{feature.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-500">{feature.description}</p>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-      </main>
 
-      <Footer />
-    </div>
-  );
+                  <h3 className="mt-6 text-xl font-semibold text-slate-900">
+                    {feature.title}
+                  </h3>
+
+                  <p className="mt-4 text-sm leading-6 text-slate-600">
+                    {feature.description}
+                  </p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+
+    <Footer />
+  </div>
+);
 }
