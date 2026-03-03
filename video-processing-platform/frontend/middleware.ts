@@ -1,11 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextFetchEvent, NextRequest, NextResponse } from "next/server";
 
 const isProtectedRoute = createRouteMatcher(["/student(.*)", "/admin(.*)"]);
 const isAdminRoute = createRouteMatcher(["/admin(.*)"]);
 const isStudentRoute = createRouteMatcher(["/student(.*)"]);
 
-export default clerkMiddleware(async (auth, req) => {
+const disableAuth = process.env.DISABLE_AUTH === "true";
+
+async function authHandler(auth: () => Promise<{ userId: string | null; redirectToSignIn: (opts: { returnBackUrl: string }) => Response; sessionClaims: unknown }>, req: NextRequest) {
   const { userId, redirectToSignIn, sessionClaims } = await auth();
 
   if (isProtectedRoute(req) && !userId) {
@@ -13,8 +15,8 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   const sessionRole =
-    (sessionClaims?.metadata as { role?: string } | undefined)?.role ??
-    (sessionClaims?.public_metadata as { role?: string } | undefined)?.role;
+    (sessionClaims as { metadata?: { role?: string }; public_metadata?: { role?: string } })?.metadata?.role ??
+    (sessionClaims as { metadata?: { role?: string }; public_metadata?: { role?: string } })?.public_metadata?.role;
   const role = (sessionRole ?? "").toLowerCase().trim();
   const hasRole = role.length > 0;
 
@@ -27,7 +29,17 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   return NextResponse.next();
-});
+}
+
+const clerkHandler = clerkMiddleware(authHandler);
+
+export default function middleware(req: NextRequest, evt: NextFetchEvent) {
+  if (disableAuth) {
+    return NextResponse.next();
+  }
+
+  return clerkHandler(req, evt);
+}
 
 export const config = {
   matcher: ["/((?!_next|.*\\..*).*)", "/(api|trpc)(.*)"],
