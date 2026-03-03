@@ -10,6 +10,11 @@ This repository contains a video-based learning platform featuring:
 - AI‑generated, improved transcripts with one‑click regeneration
 - Admin dashboard analytics and job retry support
 
+## Sprint #3: Ingress and External Traffic Routing
+
+- Ingress architecture notes: `video-processing-platform/docs/ingress-traffic-flow.md`
+- Local setup (including ingress controller): `video-processing-platform/k8s/local-cluster-setup.md`
+
 ## UI Improvements
 
 The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.

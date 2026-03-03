@@ -22,6 +22,8 @@ spec:
             - containerPort: 3000
           env:
             - name: NEXT_PUBLIC_API_URL
+              value: {{ .Values.frontend.publicApiUrl | quote }}
+            - name: INTERNAL_API_URL
               value: "http://{{ include "video-processing-platform.fullname" . }}-backend-service:{{ .Values.backend.service.port }}"
             - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
               valueFrom:
