@@ -26,6 +26,8 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            - name: INTERNAL_API_URL
+              value: "http://backend-service:8000"
             - name: NEXT_PUBLIC_API_URL
               value: "http://api.academix.local"
             - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY

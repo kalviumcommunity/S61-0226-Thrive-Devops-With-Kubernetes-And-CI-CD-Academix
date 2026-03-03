@@ -38,6 +38,18 @@ kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller \
   --timeout=180s
+kubectl get pods -n ingress-nginx
+kubectl get svc -n ingress-nginx
+```
+
+Apply project ingress resources and verify:
+
+```sh
+kubectl apply -f k8s/services.yaml
+kubectl apply -f k8s/ingress.yaml
+kubectl get ingress
+kubectl describe ingress video-platform-ingress
+kubectl get endpoints frontend-service backend-service
 ```
 
 ## Hostname Mapping for Local Testing
@@ -53,6 +65,19 @@ Then access:
 
 - Frontend: `http://app.academix.local`
 - Backend API: `http://api.academix.local/docs`
+
+If your cluster does not bind ingress HTTP to localhost automatically, run:
+
+```sh
+kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 80:80
+```
+
+Then validate routing:
+
+```sh
+curl -I http://app.academix.local/
+curl -I http://api.academix.local/docs
+```
 
 ## Why This Is Useful
 - Enables realistic, safe experimentation with Kubernetes for our project.
