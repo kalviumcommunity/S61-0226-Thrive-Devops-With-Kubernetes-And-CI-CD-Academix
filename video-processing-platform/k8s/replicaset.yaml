@@ -3,16 +3,16 @@ kind: ReplicaSet
 metadata:
   name: video-backend-rs
   labels:
-    app: video-backend
+    app: video-backend-demo
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: video-backend
+      app: video-backend-demo
   template:
     metadata:
       labels:
-        app: video-backend
+        app: video-backend-demo
     spec:
       containers:
         - name: backend

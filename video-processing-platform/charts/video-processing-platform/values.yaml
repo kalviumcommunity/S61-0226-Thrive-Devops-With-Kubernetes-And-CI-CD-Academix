@@ -35,8 +35,9 @@ frontend:
     repository: meghanamanchala/video-frontend
     tag: latest
     pullPolicy: Always
+  publicApiUrl: http://api.academix.local
   service:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
     targetPort: 3000
   resources:
@@ -48,8 +49,27 @@ frontend:
       memory: 512Mi
   featureFlags:
     NEXT_PUBLIC_ENABLE_ADVANCED_INSIGHTS: "true"
-  env:
-    INTERNAL_API_URL: "http://video-processing-platform-backend-service:8000"
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "1024m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: app.academix.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 80
+    - host: api.academix.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend
+          port: 8000
 
 # MongoDB configuration
 mongodb:

@@ -21,6 +21,7 @@ frontend:
   replicaCount: 3
   image:
     tag: stable
+  publicApiUrl: http://api.academix.local
   resources:
     requests:
       cpu: 150m
@@ -30,6 +31,21 @@ frontend:
       memory: 768Mi
   featureFlags:
     NEXT_PUBLIC_ENABLE_ADVANCED_INSIGHTS: "true"
+
+ingress:
+  hosts:
+    - host: app.academix.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 80
+    - host: api.academix.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend
+          port: 8000
 
 mongodb:
   resources:

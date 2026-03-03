@@ -17,16 +17,42 @@ Docker Desktop (Kubernetes with Kubeadm)
 - You should see your cluster node(s) and system pods running.
 
 ## Project Integration
-- The Kubernetes manifests in the `k8s/` directory (`backend-deployment.yaml`, `frontend-deployment.yaml`, `services.yaml`) can be applied to the local cluster:
+- Apply core application manifests (excluding standalone demo manifests like `pod.yaml` and `replicaset.yaml`) with:
   ```sh
-  kubectl apply -f k8s/
+  kubectl apply -f k8s/persistent-volumes.yaml
+  kubectl apply -f k8s/mongo-deployment.yaml
+  kubectl apply -f k8s/backend-deployment.yaml
+  kubectl apply -f k8s/frontend-deployment.yaml
+  kubectl apply -f k8s/services.yaml
+  kubectl apply -f k8s/ingress.yaml
   ```
-- This will deploy the backend and frontend services locally for testing and development.
-- You can access the frontend using:
-  ```sh
-  kubectl get svc frontend-service
-  # Or use Docker Desktop's port forwarding features
-  ```
+- This will deploy backend/frontend services and ingress routing locally for testing and development.
+
+## Ingress Controller Setup (NGINX)
+
+Install Ingress NGINX controller once in your cluster:
+
+```sh
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+kubectl wait --namespace ingress-nginx \
+  --for=condition=ready pod \
+  --selector=app.kubernetes.io/component=controller \
+  --timeout=180s
+```
+
+## Hostname Mapping for Local Testing
+
+Add these host entries to your local hosts file so browser traffic resolves to localhost ingress:
+
+```text
+127.0.0.1 app.academix.local
+127.0.0.1 api.academix.local
+```
+
+Then access:
+
+- Frontend: `http://app.academix.local`
+- Backend API: `http://api.academix.local/docs`
 
 ## Why This Is Useful
 - Enables realistic, safe experimentation with Kubernetes for our project.

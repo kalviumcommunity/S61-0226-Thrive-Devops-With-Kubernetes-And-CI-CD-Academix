@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: video-backend-pod
   labels:
-    app: video-backend
+    app: video-backend-demo
 spec:
   containers:
     - name: backend
