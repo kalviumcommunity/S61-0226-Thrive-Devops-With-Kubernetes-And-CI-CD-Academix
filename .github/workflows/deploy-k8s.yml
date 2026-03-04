@@ -1,4 +1,4 @@
-name: Deploy to Kubernetes
+name: CD - Build, Deploy, Verify Kubernetes Release
 
 on:
   push:
@@ -34,8 +34,8 @@ env:
   HELM_RELEASE: video-platform
 
 jobs:
-  backend-ci:
-    name: Backend Tests
+  ci-backend-quality:
+    name: CI - Backend Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -63,8 +63,8 @@ jobs:
       - name: Run tests
         run: python -m pytest tests -v
 
-  frontend-ci:
-    name: Frontend Lint & Build
+  ci-frontend-quality:
+    name: CI - Frontend Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -103,9 +103,9 @@ jobs:
           NODE_ENV: production
         run: npm run build
 
-  build-backend-image:
-    name: Build & Push Backend Image
-    needs: backend-ci
+  cd-build-backend-image:
+    name: CD - Build & Push Backend Image
+    needs: ci-backend-quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -141,9 +141,9 @@ jobs:
         id: image
         run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ env.IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
 
-  build-frontend-image:
-    name: Build & Push Frontend Image
-    needs: frontend-ci
+  cd-build-frontend-image:
+    name: CD - Build & Push Frontend Image
+    needs: ci-frontend-quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -189,11 +189,11 @@ jobs:
         id: image
         run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ env.IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
 
-  deploy:
-    name: Deploy to Kubernetes
+  cd-deploy:
+    name: CD - Deploy to Kubernetes
     needs:
-      - build-backend-image
-      - build-frontend-image
+      - cd-build-backend-image
+      - cd-build-frontend-image
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -256,6 +256,33 @@ jobs:
             --set backend.image.tag=${{ env.IMAGE_TAG }} \
             --set frontend.image.repository=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend \
             --set frontend.image.tag=${{ env.IMAGE_TAG }}
+
+  cd-verify:
+    name: CD - Post-Deploy Verification
+    needs: cd-deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          if [ -z "${{ secrets.KUBE_CONFIG }}" ]; then
+            echo "KUBE_CONFIG secret is required."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          if echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+            echo "Decoded base64 kubeconfig secret"
+          else
+            echo "${{ secrets.KUBE_CONFIG }}" > "$HOME/.kube/config"
+            echo "Using raw kubeconfig secret"
+          fi
 
       - name: Verify rollout
         run: |

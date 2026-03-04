@@ -15,6 +15,15 @@ This repository contains a video-based learning platform featuring:
 - Ingress architecture notes: `video-processing-platform/docs/ingress-traffic-flow.md`
 - Local setup (including ingress controller): `video-processing-platform/k8s/local-cluster-setup.md`
 
+## Sprint #3: CI/CD Pipeline Design and Workflow Stages
+
+- Pipeline design document: `video-processing-platform/docs/cicd-pipeline-design.md`
+- Video narration guide: `video-processing-platform/docs/cicd-video-demo-script.md`
+- Workflows reflecting stage separation:
+  - `.github/workflows/backend-ci.yml`
+  - `.github/workflows/frontend-ci.yml`
+  - `.github/workflows/deploy-k8s.yml`
+
 ## UI Improvements
 
 The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.

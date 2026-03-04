@@ -1,4 +1,4 @@
-name: Backend CI
+name: CI - Backend Quality Gate
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
