@@ -29,13 +29,38 @@ permissions:
   contents: read
 
 env:
-  IMAGE_TAG: ${{ github.sha }}
   K8S_NAMESPACE: default
   HELM_RELEASE: video-platform
 
 jobs:
+  prepare-image-tags:
+    name: CD - Prepare Image Tags
+    runs-on: ubuntu-latest
+    outputs:
+      chart_version: ${{ steps.tags.outputs.chart_version }}
+      short_sha: ${{ steps.tags.outputs.short_sha }}
+      version_tag: ${{ steps.tags.outputs.version_tag }}
+      image_tag: ${{ steps.tags.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute hybrid image tags
+        id: tags
+        run: |
+          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION_TAG="${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}"
+          IMAGE_TAG="${VERSION_TAG}-sha.${SHORT_SHA}"
+
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
   ci-backend-quality:
     name: CI - Backend Quality Gate
+    needs: prepare-image-tags
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -65,6 +90,7 @@ jobs:
 
   ci-frontend-quality:
     name: CI - Frontend Quality Gate
+    needs: prepare-image-tags
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -133,13 +159,18 @@ jobs:
         with:
           context: ./video-processing-platform/backend
           push: true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare-image-tags.outputs.image_tag }}
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ needs.prepare-image-tags.outputs.image_tag }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ needs.prepare-image-tags.outputs.short_sha }}
             ${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:latest
 
       - name: Export backend image
         id: image
-        run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ env.IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
+        run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ needs.prepare-image-tags.outputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
   cd-build-frontend-image:
     name: CD - Build & Push Frontend Image
@@ -181,13 +212,18 @@ jobs:
           push: true
           build-args: |
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.CLERK_BUILD_KEY }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare-image-tags.outputs.image_tag }}
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ needs.prepare-image-tags.outputs.image_tag }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ needs.prepare-image-tags.outputs.short_sha }}
             ${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:latest
 
       - name: Export frontend image
         id: image
-        run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ env.IMAGE_TAG }}" >> "$GITHUB_OUTPUT"
+        run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ needs.prepare-image-tags.outputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
   cd-deploy:
     name: CD - Deploy to Kubernetes
@@ -253,9 +289,23 @@ jobs:
             -f video-processing-platform/charts/video-processing-platform/values.yaml \
             -f "$VALUES_FILE" \
             --set backend.image.repository=${{ secrets.DOCKER_HUB_USERNAME }}/video-backend \
-            --set backend.image.tag=${{ env.IMAGE_TAG }} \
+            --set backend.image.tag=${{ needs.prepare-image-tags.outputs.image_tag }} \
             --set frontend.image.repository=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend \
-            --set frontend.image.tag=${{ env.IMAGE_TAG }}
+            --set frontend.image.tag=${{ needs.prepare-image-tags.outputs.image_tag }}
+
+      - name: Publish image traceability summary
+        run: |
+          {
+            echo "## Image Tag Traceability"
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Short SHA tag: ${{ needs.prepare-image-tags.outputs.short_sha }}"
+            echo "- Base version: ${{ needs.prepare-image-tags.outputs.chart_version }}"
+            echo "- Versioned tag: ${{ needs.prepare-image-tags.outputs.image_tag }}"
+            echo "- Backend image: ${{ secrets.DOCKER_HUB_USERNAME }}/video-backend:${{ needs.prepare-image-tags.outputs.image_tag }}"
+            echo "- Frontend image: ${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ needs.prepare-image-tags.outputs.image_tag }}"
+            echo ""
+            echo "Tag format: <chart-version>-build.<run-number>-sha.<short-sha>"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   cd-verify:
     name: CD - Post-Deploy Verification

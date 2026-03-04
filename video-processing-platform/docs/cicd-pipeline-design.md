@@ -28,9 +28,19 @@ This document defines the intended CI/CD design for this project and maps it to 
 
 ### Stage 3: CD - Artifact Creation and Publication
 - Build versioned Docker images for backend and frontend.
-- Tag images with immutable commit SHA and optional moving tag (`latest`).
+- Tag images with hybrid semantic/build/commit tags and optional moving tag (`latest`).
 - Push artifacts to container registry (Docker Hub in this project).
 - Purpose: create deployable, traceable artifacts independent of source code.
+
+#### Implemented Tag Format
+- CI validation images (not pushed): `ci-<run-number>-sha.<short-sha>`
+- CD release images (pushed): `<chart-version>-build.<run-number>-sha.<short-sha>`
+- Example: `0.1.0-build.142-sha.a1b2c3d`
+
+Tag inputs:
+- `<chart-version>` from `video-processing-platform/charts/video-processing-platform/Chart.yaml`
+- `<run-number>` from GitHub Actions `run_number`
+- `<short-sha>` from the current commit SHA
 
 ### Stage 4: CD - Deployment
 - Resolve deployment environment (`dev` or `prod`).
@@ -98,6 +108,20 @@ Developer commit/PR
 - **Speed:** Path filters reduce unnecessary runs; parallel backend/frontend flows shorten feedback time.
 - **Safety:** CD deployment consumes immutable image tags (`sha`) and verifies rollout status before considering release successful.
 - **Traceability:** A deployed version maps directly to a Git commit hash through image tags.
+
+### Traceability Demonstration Path
+For each deployment run:
+- Workflow calculates one shared release tag for backend/frontend.
+- Images are pushed with:
+	- Release tag (`<chart-version>-build.<run-number>-sha.<short-sha>`)
+	- Short SHA tag (`<short-sha>`)
+	- `latest` (moving pointer)
+- OCI labels embed revision/version metadata:
+	- `org.opencontainers.image.revision=<full commit sha>`
+	- `org.opencontainers.image.version=<release tag>`
+- Helm deploy uses exactly that release tag.
+
+Result: given a running image tag, you can directly identify the originating commit and pipeline run.
 
 ---
 
