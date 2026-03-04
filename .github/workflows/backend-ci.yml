@@ -1,16 +1,6 @@
 name: CI - Backend Quality Gate
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - video-processing-platform/backend/**
-      - .github/workflows/backend-ci.yml
-  push:
-    branches: [main]
-    paths:
-      - video-processing-platform/backend/**
-      - .github/workflows/backend-ci.yml
   workflow_dispatch:
 
 permissions:
