@@ -24,6 +24,15 @@ This repository contains a video-based learning platform featuring:
   - `.github/workflows/frontend-ci.yml`
   - `.github/workflows/deploy-k8s.yml`
 
+## Sprint #3: GitHub Actions Continuous Integration (CI)
+
+- Working CI workflow: `.github/workflows/ci.yml`
+- CI implementation notes: `video-processing-platform/docs/ci-github-actions.md`
+- CI triggers: `pull_request`, `push` to `main`, and `workflow_dispatch`
+- CI quality gates:
+  - Backend: lint + tests
+  - Frontend: lint + production build
+
 ## UI Improvements
 
 The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.
