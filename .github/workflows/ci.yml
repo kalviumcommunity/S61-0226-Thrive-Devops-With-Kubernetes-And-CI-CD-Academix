@@ -92,6 +92,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Compute CI image tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "CI_IMAGE_TAG=ci-${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -101,7 +106,9 @@ jobs:
           context: ./video-processing-platform/backend
           file: ./video-processing-platform/backend/Dockerfile
           push: false
-          tags: local/video-backend:ci
+          tags: |
+            local/video-backend:${{ env.CI_IMAGE_TAG }}
+            local/video-backend:ci
 
   frontend-build:
     name: Frontend - Build Stage
@@ -181,6 +188,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Compute CI image tag
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "CI_IMAGE_TAG=ci-${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -200,4 +212,6 @@ jobs:
           push: false
           build-args: |
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.CLERK_BUILD_KEY }}
-          tags: local/video-frontend:ci
+          tags: |
+            local/video-frontend:${{ env.CI_IMAGE_TAG }}
+            local/video-frontend:ci

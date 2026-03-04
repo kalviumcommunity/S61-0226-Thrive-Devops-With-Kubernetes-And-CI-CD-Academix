@@ -30,6 +30,32 @@ The workflow runs gated CI stages for both services in this order:
 
 Docker image steps use `docker/build-push-action` with `push: false` to validate container build readiness on every relevant change.
 
+## Image Tagging Strategy (Implemented)
+We use a **hybrid tag strategy** so every image is traceable to code and pipeline context:
+
+- CI validation builds (`.github/workflows/ci.yml`):
+   - `ci-<run-number>-sha.<short-sha>`
+   - Example: `ci-142-sha.a1b2c3d`
+- CD release builds (`.github/workflows/deploy-k8s.yml`):
+   - `<chart-version>-build.<run-number>-sha.<short-sha>`
+   - Example: `0.1.0-build.142-sha.a1b2c3d`
+
+This combines:
+- semantic version context from Helm Chart version,
+- CI build number for uniqueness/order,
+- commit SHA for immutable source traceability.
+
+## How Tag Traceability Works
+- The workflow computes image tags from:
+   - `Chart.yaml` version
+   - `github.run_number`
+   - `github.sha` (short SHA)
+- OCI labels are added to images:
+   - `org.opencontainers.image.revision=<full commit sha>`
+   - `org.opencontainers.image.version=<computed image tag>`
+- Deployment uses the same computed tag for backend + frontend Helm values.
+- GitHub Actions run summary includes commit, tag format, and final pushed image names.
+
 ## Trigger Conditions
 The workflow runs automatically on:
 - `pull_request` to `main` (for early validation before merge)
