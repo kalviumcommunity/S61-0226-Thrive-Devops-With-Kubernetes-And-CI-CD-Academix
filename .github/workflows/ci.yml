@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -94,21 +95,41 @@ jobs:
 
       - name: Compute CI image tag
         run: |
+          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
           SHORT_SHA="${GITHUB_SHA::7}"
-          echo "CI_IMAGE_TAG=ci-${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "CI_IMAGE_TAG=${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "CI_SHA_TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build backend Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./video-processing-platform/backend
           file: ./video-processing-platform/backend/Dockerfile
-          push: false
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.CI_IMAGE_TAG }}
           tags: |
-            local/video-backend:${{ env.CI_IMAGE_TAG }}
-            local/video-backend:ci
+            ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_IMAGE_TAG }}
+            ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_SHA_TAG }}
+            ${{ env.IMAGE_NAMESPACE }}/video-backend:latest
+
+      - name: Verify backend image push
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: docker buildx imagetools inspect ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_IMAGE_TAG }}
 
   frontend-build:
     name: Frontend - Build Stage
@@ -190,11 +211,22 @@ jobs:
 
       - name: Compute CI image tag
         run: |
+          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
           SHORT_SHA="${GITHUB_SHA::7}"
-          echo "CI_IMAGE_TAG=ci-${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "CI_IMAGE_TAG=${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "CI_SHA_TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
+          echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve Clerk build arg fallback
         run: |
@@ -209,9 +241,18 @@ jobs:
         with:
           context: ./video-processing-platform/frontend
           file: ./video-processing-platform/frontend/Dockerfile
-          push: false
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           build-args: |
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.CLERK_BUILD_KEY }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.CI_IMAGE_TAG }}
           tags: |
-            local/video-frontend:${{ env.CI_IMAGE_TAG }}
-            local/video-frontend:ci
+            ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_IMAGE_TAG }}
+            ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_SHA_TAG }}
+            ${{ env.IMAGE_NAMESPACE }}/video-frontend:latest
+
+      - name: Verify frontend image push
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: docker buildx imagetools inspect ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_IMAGE_TAG }}

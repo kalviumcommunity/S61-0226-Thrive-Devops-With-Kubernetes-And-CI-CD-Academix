@@ -28,14 +28,14 @@ The workflow runs gated CI stages for both services in this order:
    - Test/check stage: lint (`npm run lint`)
    - Image stage: builds frontend Docker image using `Dockerfile`
 
-Docker image steps use `docker/build-push-action` with `push: false` to validate container build readiness on every relevant change.
+Docker image steps use `docker/build-push-action` to build on all triggers and **push to GHCR on `push` to `main`**.
 
 ## Image Tagging Strategy (Implemented)
 We use a **hybrid tag strategy** so every image is traceable to code and pipeline context:
 
 - CI validation builds (`.github/workflows/ci.yml`):
-   - `ci-<run-number>-sha.<short-sha>`
-   - Example: `ci-142-sha.a1b2c3d`
+   - `<chart-version>-build.<run-number>-sha.<short-sha>`
+   - Example: `0.1.0-build.142-sha.a1b2c3d`
 - CD release builds (`.github/workflows/deploy-k8s.yml`):
    - `<chart-version>-build.<run-number>-sha.<short-sha>`
    - Example: `0.1.0-build.142-sha.a1b2c3d`
@@ -55,6 +55,25 @@ This combines:
    - `org.opencontainers.image.version=<computed image tag>`
 - Deployment uses the same computed tag for backend + frontend Helm values.
 - GitHub Actions run summary includes commit, tag format, and final pushed image names.
+
+## Container Registry and Secure Authentication
+- Container registry selected: **GitHub Container Registry** (`ghcr.io`)
+- CI uses secure authentication via:
+   - `username: ${{ github.actor }}`
+   - `password: ${{ secrets.GITHUB_TOKEN }}`
+- Workflow permissions include `packages: write` and `contents: read`.
+- No registry credentials are hardcoded in repo files.
+
+## Push and Verification Behavior
+- On `push` to `main`:
+   - CI logs in to GHCR.
+   - Pushes versioned backend/frontend images.
+   - Adds SHA and `latest` tags.
+   - Verifies pushes using `docker buildx imagetools inspect <image:tag>`.
+- On `pull_request`:
+   - CI builds images without pushing.
+
+This ensures credentials are managed through GitHub secrets and image push success is explicitly validated in pipeline logs.
 
 ## Trigger Conditions
 The workflow runs automatically on:
