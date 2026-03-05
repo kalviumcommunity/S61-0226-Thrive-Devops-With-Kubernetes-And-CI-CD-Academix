@@ -57,3 +57,8 @@ mongodb:
       memory: 1Gi
   persistence:
     size: 5Gi
+
+# Use this secret if GHCR packages are private.
+# Create it with: kubectl create secret docker-registry ghcr-pull-secret ...
+imagePullSecrets:
+  - ghcr-pull-secret

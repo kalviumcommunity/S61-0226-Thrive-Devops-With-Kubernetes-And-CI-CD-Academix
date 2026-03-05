@@ -1,6 +1,6 @@
 # GitHub Actions CI Implementation (Sprint #3)
 
-This document explains the working Continuous Integration setup implemented for this repository.
+This document explains the working Continuous Integration and Continuous Deployment setup implemented for this repository.
 
 ## Workflow File
 - `.github/workflows/ci.yml`
@@ -8,9 +8,9 @@ This document explains the working Continuous Integration setup implemented for 
 Primary automated CI is centralized in `ci.yml` to avoid duplicate runs. Existing service-specific workflow files remain available for manual checks (`workflow_dispatch`).
 
 ## What This CI Workflow Does
-The workflow runs gated CI stages for both services in this order:
+This workflow runs gated stages for both services in this order:
 
-**Build -> Test/Checks -> Docker Image Build**
+**Build -> Test/Checks -> Docker Image Build -> Deploy**
 
 1. **Backend stages**
    - Build stage: Python compile sanity check
@@ -28,6 +28,13 @@ The workflow runs gated CI stages for both services in this order:
    - Test/check stage: lint (`npm run lint`)
    - Image stage: builds frontend Docker image using `Dockerfile`
 
+3. **Deploy stage (main branch only)**
+   - Configures `kubectl` and `helm`
+   - Loads kubeconfig securely from GitHub secret
+   - Runs `helm upgrade --install --atomic --wait`
+   - Deploys backend and frontend using the newly built image tag
+   - Verifies rollout status for both deployments
+
 Docker image steps use `docker/build-push-action` to build on all triggers and **push to GHCR on `push` to `main`**.
 
 ## Image Tagging Strategy (Implemented)
@@ -36,14 +43,15 @@ We use a **hybrid tag strategy** so every image is traceable to code and pipelin
 - CI validation builds (`.github/workflows/ci.yml`):
    - `<chart-version>-build.<run-number>-sha.<short-sha>`
    - Example: `0.1.0-build.142-sha.a1b2c3d`
-- CD release builds (`.github/workflows/deploy-k8s.yml`):
-   - `<chart-version>-build.<run-number>-sha.<short-sha>`
-   - Example: `0.1.0-build.142-sha.a1b2c3d`
+- Manual fallback CD (`.github/workflows/deploy-k8s.yml`, `workflow_dispatch` only):
+   - Uses the same tag format when run manually
 
 This combines:
 - semantic version context from Helm Chart version,
 - CI build number for uniqueness/order,
 - commit SHA for immutable source traceability.
+
+Both backend and frontend are deployed with the same computed tag for release consistency.
 
 ## How Tag Traceability Works
 - The workflow computes image tags from:
@@ -64,16 +72,33 @@ This combines:
 - Workflow permissions include `packages: write` and `contents: read`.
 - No registry credentials are hardcoded in repo files.
 
+## Kubernetes Access from CI (Secure Setup)
+Required GitHub repository secrets:
+
+- `KUBE_CONFIG`: kubeconfig content (raw or base64-encoded) for a least-privilege Kubernetes service account
+- `K8S_NAMESPACE` (optional): target namespace override, defaults to `default`
+
+Reference manifest for least-privilege access:
+
+- `video-processing-platform/k8s/ci-deployer-rbac.yaml`
+
+Optional GitHub repository variable:
+
+- `DEPLOY_ENV`: `dev` or `prod` (defaults to `dev`)
+
 ## Push and Verification Behavior
 - On `push` to `main`:
    - CI logs in to GHCR.
    - Pushes versioned backend/frontend images.
    - Adds SHA and `latest` tags.
    - Verifies pushes using `docker buildx imagetools inspect <image:tag>`.
+   - Deploys to Kubernetes automatically using Helm.
+   - Verifies deployment rollout status.
 - On `pull_request`:
    - CI builds images without pushing.
+   - CI builds and validates images without pushing or deploying.
 
-This ensures credentials are managed through GitHub secrets and image push success is explicitly validated in pipeline logs.
+This ensures credentials are managed through GitHub secrets and image push/deploy success is explicitly validated in pipeline logs.
 
 ## Trigger Conditions
 The workflow runs automatically on:
@@ -82,6 +107,7 @@ The workflow runs automatically on:
 - `workflow_dispatch` (manual run for demos/debugging)
 
 It is path-filtered to run when backend/frontend code or the workflow itself changes.
+It also runs when Helm chart files change.
 
 ## Why These Triggers
 - **pull_request:** catches issues before code is merged.
@@ -105,3 +131,4 @@ In your PR description, include:
 ### CI Run Evidence
 - Successful run: <paste GitHub Actions run URL>
 ```
+# ci test Thu, Mar  5, 2026 10:23:39 AM
