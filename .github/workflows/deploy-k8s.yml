@@ -1,15 +1,6 @@
 name: CD - Build, Deploy, Verify Kubernetes Release
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - video-processing-platform/backend/**
-      - video-processing-platform/frontend/**
-      - video-processing-platform/charts/**
-      - video-processing-platform/k8s/**
-      - video-processing-platform/scripts/**
-      - .github/workflows/deploy-k8s.yml
   workflow_dispatch:
     inputs:
       environment:

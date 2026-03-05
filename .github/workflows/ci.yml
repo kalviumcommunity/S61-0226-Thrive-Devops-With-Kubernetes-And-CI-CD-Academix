@@ -6,12 +6,14 @@ on:
     paths:
       - video-processing-platform/backend/**
       - video-processing-platform/frontend/**
+      - video-processing-platform/charts/**
       - .github/workflows/ci.yml
   push:
     branches: [main]
     paths:
       - video-processing-platform/backend/**
       - video-processing-platform/frontend/**
+      - video-processing-platform/charts/**
       - .github/workflows/ci.yml
   workflow_dispatch:
 
@@ -24,8 +26,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare-image-metadata:
+    name: Prepare Image Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      chart_version: ${{ steps.meta.outputs.chart_version }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      ci_image_tag: ${{ steps.meta.outputs.ci_image_tag }}
+      image_namespace: ${{ steps.meta.outputs.image_namespace }}
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compute image metadata
+        id: meta
+        run: |
+          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
+          SHORT_SHA="${GITHUB_SHA::7}"
+          CI_IMAGE_TAG="${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}"
+          IMAGE_NAMESPACE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+
+          echo "chart_version=$CHART_VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "ci_image_tag=$CI_IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image_namespace=$IMAGE_NAMESPACE" >> "$GITHUB_OUTPUT"
+          echo "backend_image=${IMAGE_NAMESPACE}/video-backend:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${IMAGE_NAMESPACE}/video-frontend:${CI_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
   backend-build:
     name: Backend - Build Stage
+    needs: prepare-image-metadata
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -86,20 +118,14 @@ jobs:
 
   backend-image:
     name: Backend - Docker Image Stage
-    needs: backend-test
+    needs:
+      - prepare-image-metadata
+      - backend-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Compute CI image tag
-        run: |
-          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
-          SHORT_SHA="${GITHUB_SHA::7}"
-          echo "CI_IMAGE_TAG=${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
-          echo "CI_SHA_TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
-          echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -121,18 +147,19 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ env.CI_IMAGE_TAG }}
+            org.opencontainers.image.version=${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
           tags: |
-            ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_IMAGE_TAG }}
-            ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_SHA_TAG }}
-            ${{ env.IMAGE_NAMESPACE }}/video-backend:latest
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.short_sha }}
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:latest
 
       - name: Verify backend image push
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: docker buildx imagetools inspect ${{ env.IMAGE_NAMESPACE }}/video-backend:${{ env.CI_IMAGE_TAG }}
+        run: docker buildx imagetools inspect ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
 
   frontend-build:
     name: Frontend - Build Stage
+    needs: prepare-image-metadata
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -202,20 +229,14 @@ jobs:
 
   frontend-image:
     name: Frontend - Docker Image Stage
-    needs: frontend-test
+    needs:
+      - prepare-image-metadata
+      - frontend-test
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Compute CI image tag
-        run: |
-          CHART_VERSION=$(grep '^version:' video-processing-platform/charts/video-processing-platform/Chart.yaml | awk '{print $2}')
-          SHORT_SHA="${GITHUB_SHA::7}"
-          echo "CI_IMAGE_TAG=${CHART_VERSION}-build.${GITHUB_RUN_NUMBER}-sha.${SHORT_SHA}" >> "$GITHUB_ENV"
-          echo "CI_SHA_TAG=${SHORT_SHA}" >> "$GITHUB_ENV"
-          echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -247,12 +268,110 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ env.CI_IMAGE_TAG }}
+            org.opencontainers.image.version=${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
           tags: |
-            ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_IMAGE_TAG }}
-            ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_SHA_TAG }}
-            ${{ env.IMAGE_NAMESPACE }}/video-frontend:latest
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.short_sha }}
+            ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:latest
 
       - name: Verify frontend image push
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: docker buildx imagetools inspect ${{ env.IMAGE_NAMESPACE }}/video-frontend:${{ env.CI_IMAGE_TAG }}
+        run: docker buildx imagetools inspect ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
+
+  deploy-k8s:
+    name: Deploy - Helm Release
+    needs:
+      - prepare-image-metadata
+      - backend-image
+      - frontend-image
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HELM_RELEASE: video-platform
+      K8S_NAMESPACE: default
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Resolve deployment environment
+        run: |
+          DEPLOY_ENV="${{ vars.DEPLOY_ENV }}"
+          if [ -z "$DEPLOY_ENV" ]; then
+            DEPLOY_ENV="dev"
+          fi
+
+          NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
+          if [ -z "$NAMESPACE" ]; then
+            NAMESPACE="$K8S_NAMESPACE"
+          fi
+
+          VALUES_FILE="video-processing-platform/charts/video-processing-platform/values-${DEPLOY_ENV}.yaml"
+
+          echo "DEPLOY_ENV=$DEPLOY_ENV" >> "$GITHUB_ENV"
+          echo "K8S_NAMESPACE=$NAMESPACE" >> "$GITHUB_ENV"
+          echo "VALUES_FILE=$VALUES_FILE" >> "$GITHUB_ENV"
+
+      - name: Configure kubeconfig securely
+        run: |
+          KCFG="${{ secrets.KUBE_CONFIG }}"
+          if [ -z "$KCFG" ]; then
+            echo "KUBE_CONFIG secret is required."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.kube"
+          if echo "$KCFG" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+            echo "Using base64-encoded kubeconfig from secret"
+          else
+            printf '%s' "$KCFG" > "$HOME/.kube/config"
+            echo "Using raw kubeconfig from secret"
+          fi
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Validate cluster access and prerequisites
+        run: |
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "Values file not found: $VALUES_FILE"
+            exit 1
+          fi
+
+          kubectl cluster-info
+          kubectl get ns "$K8S_NAMESPACE" >/dev/null 2>&1 || true
+
+      - name: Deploy release with current CI image tags
+        run: |
+          helm upgrade --install "$HELM_RELEASE" video-processing-platform/charts/video-processing-platform \
+            --namespace "$K8S_NAMESPACE" \
+            --create-namespace \
+            --atomic \
+            --wait \
+            -f video-processing-platform/charts/video-processing-platform/values.yaml \
+            -f "$VALUES_FILE" \
+            --set backend.image.repository=${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend \
+            --set backend.image.tag=${{ needs.prepare-image-metadata.outputs.ci_image_tag }} \
+            --set frontend.image.repository=${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend \
+            --set frontend.image.tag=${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-backend -n "$K8S_NAMESPACE" --timeout=240s
+          kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-frontend -n "$K8S_NAMESPACE" --timeout=240s
+
+      - name: Publish deployment summary
+        run: |
+          {
+            echo "## CI/CD Deployment Summary"
+            echo "- Environment: $DEPLOY_ENV"
+            echo "- Namespace: $K8S_NAMESPACE"
+            echo "- Helm release: $HELM_RELEASE"
+            echo "- Backend image: ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}"
+            echo "- Frontend image: ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}"
+            echo "- Commit: ${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"

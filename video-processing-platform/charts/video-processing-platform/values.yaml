@@ -4,8 +4,8 @@
 backend:
   replicaCount: 3
   image:
-    repository: video-processing-platform-backend
-    tag: v1
+    repository: ghcr.io/kalviumcommunity/video-backend
+    tag: latest
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -32,7 +32,7 @@ backend:
 frontend:
   replicaCount: 3
   image:
-    repository: meghanamanchala/video-frontend
+    repository: ghcr.io/kalviumcommunity/video-frontend
     tag: latest
     pullPolicy: Always
   publicApiUrl: http://api.academix.local
@@ -86,3 +86,9 @@ mongodb:
     limits:
       cpu: 1000m
       memory: 2Gi
+
+# Optional image pull secrets for private registries (for example private GHCR packages)
+# Example:
+# imagePullSecrets:
+#   - ghcr-pull-secret
+imagePullSecrets: []

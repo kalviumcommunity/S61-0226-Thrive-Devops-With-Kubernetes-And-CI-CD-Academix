@@ -1,0 +1,260 @@
+---
+# Source: video-processing-platform/templates/backend.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: video-platform-video-processing-platform-backend-uploads-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Source: video-processing-platform/templates/mongodb.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: video-platform-video-processing-platform-mongo-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Source: video-processing-platform/templates/backend.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-platform-video-processing-platform-backend-service
+spec:
+  selector:
+    app: video-processing-platform-backend
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+  type: ClusterIP
+---
+# Source: video-processing-platform/templates/frontend.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-platform-video-processing-platform-frontend-service
+spec:
+  selector:
+    app: video-processing-platform-frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: ClusterIP
+---
+# Source: video-processing-platform/templates/mongodb.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-platform-video-processing-platform-mongo-service
+spec:
+  selector:
+    app: video-processing-platform-mongo
+  ports:
+    - protocol: TCP
+      port: 27017
+      targetPort: 27017
+  type: ClusterIP
+---
+# Source: video-processing-platform/templates/backend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-platform-video-processing-platform-backend
+  labels:
+    app: video-processing-platform-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-processing-platform-backend
+  template:
+    metadata:
+      labels:
+        app: video-processing-platform-backend
+    spec:
+      imagePullSecrets:
+        - name: "ghcr-pull-secret"
+      containers:
+        - name: backend
+          image: "ghcr.io/kalviumcommunity/video-backend:dev"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: username
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: password
+            - name: MONGO_URL
+              value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@video-platform-video-processing-platform-mongo-service:27017"
+            - name: MAX_UPLOAD_BYTES
+              value: "524288000"
+            - name: MONGO_DB_NAME
+              value: "video_platform_dev"
+            - name: UPLOAD_DIR
+              value: "/app/uploads"
+            - name: ENABLE_AI_SUMMARY
+              value: "false"
+            - name: ENABLE_LIVE_SUMMARY
+              value: "false"
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 75m
+              memory: 128Mi
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: video-platform-video-processing-platform-backend-uploads-pvc
+---
+# Source: video-processing-platform/templates/frontend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-platform-video-processing-platform-frontend
+  labels:
+    app: video-processing-platform-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-processing-platform-frontend
+  template:
+    metadata:
+      labels:
+        app: video-processing-platform-frontend
+    spec:
+      imagePullSecrets:
+        - name: "ghcr-pull-secret"
+      containers:
+        - name: frontend
+          image: "ghcr.io/kalviumcommunity/video-frontend:dev"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://api.dev.academix.local"
+            - name: INTERNAL_API_URL
+              value: "http://video-platform-video-processing-platform-backend-service:8000"
+            - name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clerk-secrets
+                  key: publishable-key
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clerk-secrets
+                  key: secret-key
+            - name: NEXT_PUBLIC_ENABLE_ADVANCED_INSIGHTS
+              value: "false"
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 75m
+              memory: 128Mi
+---
+# Source: video-processing-platform/templates/mongodb.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-platform-video-processing-platform-mongo
+  labels:
+    app: video-processing-platform-mongo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-processing-platform-mongo
+  template:
+    metadata:
+      labels:
+        app: video-processing-platform-mongo
+    spec:
+      containers:
+        - name: mongo
+          image: "mongo:7-jammy"
+          ports:
+            - containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: password
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 150m
+              memory: 256Mi
+      volumes:
+        - name: mongo-data
+          persistentVolumeClaim:
+            claimName: video-platform-video-processing-platform-mongo-pvc
+---
+# Source: video-processing-platform/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: video-platform-video-processing-platform-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 1024m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "app.dev.academix.local"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: video-platform-video-processing-platform-frontend-service
+                port:
+                  number: 80
+    - host: "api.dev.academix.local"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: video-platform-video-processing-platform-backend-service
+                port:
+                  number: 8000
