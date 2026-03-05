@@ -284,7 +284,7 @@ jobs:
       - prepare-image-metadata
       - backend-image
       - frontend-image
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_K8S_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -337,6 +337,16 @@ jobs:
 
       - name: Validate cluster access and prerequisites
         run: |
+          if [ -z "${{ secrets.CLERK_SECRET_KEY }}" ] || [ -z "${{ secrets.MONGO_USERNAME }}" ] || [ -z "${{ secrets.MONGO_PASSWORD }}" ]; then
+            echo "CLERK_SECRET_KEY, MONGO_USERNAME, and MONGO_PASSWORD secrets are required."
+            exit 1
+          fi
+
+          if [ -z "${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}" ]; then
+            echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY secret is required."
+            exit 1
+          fi
+
           if [ ! -f "$VALUES_FILE" ]; then
             echo "Values file not found: $VALUES_FILE"
             exit 1
@@ -344,6 +354,25 @@ jobs:
 
           kubectl cluster-info
           kubectl get ns "$K8S_NAMESPACE" >/dev/null 2>&1 || true
+
+      - name: Create or update runtime Kubernetes secrets
+        env:
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
+          MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
+        run: |
+          kubectl create secret generic clerk-secrets \
+            --namespace "$K8S_NAMESPACE" \
+            --from-literal=publishable-key="$CLERK_PUBLISHABLE_KEY" \
+            --from-literal=secret-key="$CLERK_SECRET_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic mongo-secrets \
+            --namespace "$K8S_NAMESPACE" \
+            --from-literal=username="$MONGO_USERNAME" \
+            --from-literal=password="$MONGO_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy release with current CI image tags
         run: |
