@@ -21,12 +21,25 @@ spec:
           ports:
             - containerPort: 8000
           env:
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: username
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongo-secrets
+                  key: password
             - name: MONGO_URL
-              value: "mongodb+srv://skhabeebhussain91_db_user:qbGhiIu1YvtdmDqb@cluster0.y1kdkmp.mongodb.net/?appName=Cluster0"
+              value: "mongodb+srv://$(MONGO_USERNAME):$(MONGO_PASSWORD)@<cluster-url>/?appName=<cluster-name>"
             - name: MONGO_DB_NAME
               value: "video_platform"
             - name: CLERK_SECRET_KEY
-              value: "sk_test_VTpLjUAKVC2nuPfSzGdfxqN2c3GtEDEdSjx3tVHFBf"
+              valueFrom:
+                secretKeyRef:
+                  name: clerk-secrets
+                  key: secret-key
           resources:
             requests:
               cpu: "250m"

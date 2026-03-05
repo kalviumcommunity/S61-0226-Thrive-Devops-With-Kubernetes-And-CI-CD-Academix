@@ -14,7 +14,12 @@ This guide demonstrates observable probe behavior for the backend deployment.
 
 ```sh
 kubectl apply -f k8s/persistent-volumes.yaml
-kubectl apply -f k8s/secrets.yaml
+kubectl create secret generic clerk-secrets \
+  --from-literal=publishable-key="<your-publishable-key>" \
+  --from-literal=secret-key="<your-secret-key>"
+kubectl create secret generic mongo-secrets \
+  --from-literal=username="<your-mongo-username>" \
+  --from-literal=password="<your-mongo-password>"
 kubectl apply -f k8s/mongo-deployment.yaml
 kubectl apply -f k8s/backend-deployment.yaml
 kubectl apply -f k8s/services.yaml

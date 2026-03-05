@@ -31,6 +31,7 @@ This workflow runs gated stages for both services in this order:
 3. **Deploy stage (main branch only)**
    - Configures `kubectl` and `helm`
    - Loads kubeconfig securely from GitHub secret
+   - Creates/updates Kubernetes `clerk-secrets` and `mongo-secrets` at runtime from GitHub Secrets
    - Runs `helm upgrade --install --atomic --wait`
    - Deploys backend and frontend using the newly built image tag
    - Verifies rollout status for both deployments
@@ -76,6 +77,12 @@ Both backend and frontend are deployed with the same computed tag for release co
 Required GitHub repository secrets:
 
 - `KUBE_CONFIG`: kubeconfig content (raw or base64-encoded) for a least-privilege Kubernetes service account
+- `DOCKER_HUB_USERNAME`
+- `DOCKER_HUB_TOKEN`
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `MONGO_USERNAME`
+- `MONGO_PASSWORD`
 - `K8S_NAMESPACE` (optional): target namespace override, defaults to `default`
 
 Reference manifest for least-privilege access:
@@ -85,6 +92,7 @@ Reference manifest for least-privilege access:
 Optional GitHub repository variable:
 
 - `DEPLOY_ENV`: `dev` or `prod` (defaults to `dev`)
+- `ENABLE_K8S_DEPLOY`: set to `true` only when CI runners can reach your Kubernetes API
 
 ## Push and Verification Behavior
 - On `push` to `main`:
@@ -99,6 +107,12 @@ Optional GitHub repository variable:
    - CI builds and validates images without pushing or deploying.
 
 This ensures credentials are managed through GitHub secrets and image push/deploy success is explicitly validated in pipeline logs.
+
+## Secret Handling Security Notes
+- No plaintext credentials are committed in Kubernetes manifests.
+- Sensitive values are injected only during workflow execution.
+- CI validates secret presence without printing secret values.
+- Kubernetes secret objects are generated from runtime environment in the deploy jobs.
 
 ## Trigger Conditions
 The workflow runs automatically on:
