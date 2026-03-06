@@ -16,6 +16,10 @@ Metric flow in this setup:
 - `video-processing-platform/k8s/monitoring/prometheus-grafana.yaml`
 - `video-processing-platform/docs/prometheus-grafana-monitoring.md`
 
+Related centralized logging guide:
+
+- `video-processing-platform/docs/loki-fluent-bit-logging.md`
+
 Backend instrumentation:
 
 - `video-processing-platform/backend/main.py`
