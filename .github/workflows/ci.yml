@@ -139,6 +139,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build backend Docker image
+        id: build_backend_image
         uses: docker/build-push-action@v6
         with:
           context: ./video-processing-platform/backend
@@ -152,6 +153,16 @@ jobs:
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.short_sha }}
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:latest
+
+      - name: Publish backend image summary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          {
+            echo "### Backend Image Push"
+            echo "- Registry: ghcr.io"
+            echo "- Image: ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}"
+            echo "- Digest: ${{ steps.build_backend_image.outputs.digest }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify backend image push
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -258,6 +269,7 @@ jobs:
           fi
 
       - name: Build frontend Docker image
+        id: build_frontend_image
         uses: docker/build-push-action@v6
         with:
           context: ./video-processing-platform/frontend
@@ -273,6 +285,16 @@ jobs:
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.short_sha }}
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:latest
+
+      - name: Publish frontend image summary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          {
+            echo "### Frontend Image Push"
+            echo "- Registry: ghcr.io"
+            echo "- Image: ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}"
+            echo "- Digest: ${{ steps.build_frontend_image.outputs.digest }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify frontend image push
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
