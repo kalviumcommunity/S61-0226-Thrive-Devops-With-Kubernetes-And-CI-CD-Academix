@@ -122,7 +122,9 @@ jobs:
 
   cd-build-backend-image:
     name: CD - Build & Push Backend Image
-    needs: ci-backend-quality
+    needs:
+      - prepare-image-tags
+      - ci-backend-quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -164,7 +166,9 @@ jobs:
 
   cd-build-frontend-image:
     name: CD - Build & Push Frontend Image
-    needs: ci-frontend-quality
+    needs:
+      - prepare-image-tags
+      - ci-frontend-quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -217,9 +221,10 @@ jobs:
   cd-deploy:
     name: CD - Deploy to Kubernetes
     needs:
+      - prepare-image-tags
       - cd-build-backend-image
       - cd-build-frontend-image
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -325,7 +330,7 @@ jobs:
   cd-verify:
     name: CD - Post-Deploy Verification
     needs: cd-deploy
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -347,6 +352,26 @@ jobs:
           else
             echo "${{ secrets.KUBE_CONFIG }}" > "$HOME/.kube/config"
             echo "Using raw kubeconfig secret"
+          fi
+
+      - name: Guard against local-only kubeconfig on hosted runners
+        run: |
+          SERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
+          echo "Detected kube API server endpoint: $SERVER"
+
+          if echo "$SERVER" | grep -Eq 'kubernetes\.docker\.internal|localhost|127\.0\.0\.1'; then
+            echo "::error title=Local-only kubeconfig endpoint detected::KUBE_CONFIG points to '$SERVER', which is not reachable from GitHub-hosted runners. Use a self-hosted runner with Docker Desktop network access, or provide a remotely reachable Kubernetes API endpoint in KUBE_CONFIG."
+            exit 1
+          fi
+
+      - name: Guard against local-only kubeconfig on hosted runners
+        run: |
+          SERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
+          echo "Detected kube API server endpoint: $SERVER"
+
+          if echo "$SERVER" | grep -Eq 'kubernetes\.docker\.internal|localhost|127\.0\.0\.1'; then
+            echo "::error title=Local-only kubeconfig endpoint detected::KUBE_CONFIG points to '$SERVER', which is not reachable from GitHub-hosted runners. Use a self-hosted runner with Docker Desktop network access, or provide a remotely reachable Kubernetes API endpoint in KUBE_CONFIG."
+            exit 1
           fi
           chmod 600 "$HOME/.kube/config"
 

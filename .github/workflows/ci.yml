@@ -306,8 +306,13 @@ jobs:
       - prepare-image-metadata
       - backend-image
       - frontend-image
+
+    if: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.ENABLE_K8S_DEPLOY == 'true' }}
+    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+
     if: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     runs-on: ubuntu-latest
+
     timeout-minutes: 20
     env:
       HELM_RELEASE: video-platform
@@ -356,6 +361,16 @@ jobs:
             echo "Using raw kubeconfig from secret"
           fi
           chmod 600 "$HOME/.kube/config"
+
+      - name: Guard against local-only kubeconfig on hosted runners
+        run: |
+          SERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
+          echo "Detected kube API server endpoint: $SERVER"
+
+          if echo "$SERVER" | grep -Eq 'kubernetes\.docker\.internal|localhost|127\.0\.0\.1'; then
+            echo "::error title=Local-only kubeconfig endpoint detected::KUBE_CONFIG points to '$SERVER', which is not reachable from GitHub-hosted runners. Use a self-hosted runner with Docker Desktop network access, or provide a remotely reachable Kubernetes API endpoint in KUBE_CONFIG."
+            exit 1
+          fi
 
       - name: Validate cluster access and prerequisites
         run: |
