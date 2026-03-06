@@ -153,6 +153,26 @@ def test_readiness_probe_ok():
     assert response.json()["status"] == "ready"
 
 
+def test_request_id_header_is_added():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert "x-request-id" in response.headers
+
+
+def test_observability_metrics_snapshot():
+    # Generate a couple of requests so snapshot has data.
+    client.get("/health")
+    client.get("/health/readiness")
+
+    snapshot = client.get("/observability/metrics-snapshot")
+    assert snapshot.status_code == 200
+    body = snapshot.json()
+    assert body["service"] == "video-api"
+    assert body["requestsTotal"] >= 2
+    assert "latencyMs" in body
+    assert "statusCounts" in body
+
+
 def test_readiness_probe_can_fail_without_liveness_failing():
     toggle = client.post("/api/admin/probes/readiness", json={"enabled": False})
     assert toggle.status_code == 200

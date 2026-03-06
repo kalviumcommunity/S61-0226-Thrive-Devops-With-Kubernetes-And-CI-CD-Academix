@@ -33,6 +33,15 @@ This repository contains a video-based learning platform featuring:
   - Backend: lint + tests
   - Frontend: lint + production build
 
+## Sprint #3: Observability (Metrics, Logs, Traces)
+
+- Observability concepts and project mapping: `video-processing-platform/docs/observability-metrics-logs-traces.md`
+- Video demo script: `video-processing-platform/docs/observability-video-demo-script.md`
+- Practical backend observability additions:
+  - Request correlation header (`X-Request-ID`)
+  - Request latency/status logs
+  - Lightweight metrics endpoint: `GET /observability/metrics-snapshot`
+
 ## UI Improvements
 
 The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.

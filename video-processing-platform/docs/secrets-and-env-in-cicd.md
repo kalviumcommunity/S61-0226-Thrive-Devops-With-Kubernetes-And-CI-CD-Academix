@@ -7,7 +7,7 @@ This project treats secrets as runtime-only security assets.
 The CI/CD workflows use sensitive values that must never be committed:
 
 - `KUBE_CONFIG`
-- `DOCKER_HUB_TOKEN`
+- `GITHUB_TOKEN` (auto-provided by GitHub Actions for GHCR auth)
 - `CLERK_SECRET_KEY`
 - `MONGO_USERNAME`
 - `MONGO_PASSWORD`
@@ -43,12 +43,15 @@ This means:
 Create these in repository settings before running deployment workflows:
 
 - `KUBE_CONFIG`
-- `DOCKER_HUB_USERNAME`
-- `DOCKER_HUB_TOKEN`
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 - `MONGO_USERNAME`
 - `MONGO_PASSWORD`
+
+Only for manual Docker Hub fallback workflow (`deploy-k8s.yml`):
+
+- `DOCKER_HUB_USERNAME`
+- `DOCKER_HUB_TOKEN`
 
 Optional:
 

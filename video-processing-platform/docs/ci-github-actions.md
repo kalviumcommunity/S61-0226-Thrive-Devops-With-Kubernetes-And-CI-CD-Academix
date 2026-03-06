@@ -74,16 +74,19 @@ Both backend and frontend are deployed with the same computed tag for release co
 - No registry credentials are hardcoded in repo files.
 
 ## Kubernetes Access from CI (Secure Setup)
-Required GitHub repository secrets:
+Required GitHub repository secrets for deployment jobs:
 
 - `KUBE_CONFIG`: kubeconfig content (raw or base64-encoded) for a least-privilege Kubernetes service account
-- `DOCKER_HUB_USERNAME`
-- `DOCKER_HUB_TOKEN`
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 - `MONGO_USERNAME`
 - `MONGO_PASSWORD`
 - `K8S_NAMESPACE` (optional): target namespace override, defaults to `default`
+
+Optional secrets for manual fallback workflow (`.github/workflows/deploy-k8s.yml`):
+
+- `DOCKER_HUB_USERNAME`
+- `DOCKER_HUB_TOKEN`
 
 Reference manifest for least-privilege access:
 
@@ -99,6 +102,7 @@ Optional GitHub repository variable:
    - CI logs in to GHCR.
    - Pushes versioned backend/frontend images.
    - Adds SHA and `latest` tags.
+   - Publishes image digest and image reference in workflow summary.
    - Verifies pushes using `docker buildx imagetools inspect <image:tag>`.
    - Deploys to Kubernetes automatically using Helm.
    - Verifies deployment rollout status.

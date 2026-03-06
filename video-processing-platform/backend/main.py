@@ -4,13 +4,15 @@ import os
 import re
 import subprocess
 import uuid
+from collections import defaultdict, deque
+from time import perf_counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -27,6 +29,39 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("video-api")
+
+
+def _build_observability_store() -> dict[str, Any]:
+    return {
+        "requests_total": 0,
+        "errors_total": 0,
+        "status_counts": defaultdict(int),
+        "path_counts": defaultdict(int),
+        "latency_ms_recent": deque(maxlen=500),
+        "started_at": utcnow().isoformat(),
+    }
+
+
+def _record_request_observation(path: str, status_code: int, latency_ms: float) -> None:
+    store = getattr(app.state, "observability", None)
+    if store is None:
+        store = _build_observability_store()
+        app.state.observability = store
+
+    store["requests_total"] += 1
+    store["status_counts"][str(status_code)] += 1
+    store["path_counts"][path] += 1
+    store["latency_ms_recent"].append(round(latency_ms, 2))
+    if status_code >= 500:
+        store["errors_total"] += 1
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    sorted_values = sorted(values)
+    idx = int(round((percentile / 100.0) * (len(sorted_values) - 1)))
+    return round(sorted_values[idx], 2)
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "video_platform")
@@ -47,6 +82,7 @@ async def lifespan(app: FastAPI):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     app.state.liveness_ok = True
     app.state.readiness_ok = True
+    app.state.observability = _build_observability_store()
     client = AsyncIOMotorClient(MONGO_URL)
     app.state.db_client = client
     app.state.db = client[MONGO_DB_NAME]
@@ -60,6 +96,42 @@ async def lifespan(app: FastAPI):
         client.close()
 
 app = FastAPI(title="Video Processing API", version="1.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def observability_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    start = perf_counter()
+    path = request.url.path
+    method = request.method
+
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception:
+        latency_ms = (perf_counter() - start) * 1000
+        _record_request_observation(path=path, status_code=500, latency_ms=latency_ms)
+        logger.exception(
+            "request_failed request_id=%s method=%s path=%s status=500 latency_ms=%.2f",
+            request_id,
+            method,
+            path,
+            latency_ms,
+        )
+        raise
+
+    latency_ms = (perf_counter() - start) * 1000
+    _record_request_observation(path=path, status_code=status_code, latency_ms=latency_ms)
+    logger.info(
+        "request_complete request_id=%s method=%s path=%s status=%s latency_ms=%.2f",
+        request_id,
+        method,
+        path,
+        status_code,
+        latency_ms,
+    )
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 # --- progress websocket manager -----------------------------------------
 class ProgressConnectionManager:
@@ -786,6 +858,42 @@ async def readiness_probe(db: AsyncIOMotorDatabase = Depends(get_db)) -> dict[st
 
     await db.command({"ping": 1})
     return {"status": "ready", "service": "video-api"}
+
+
+@app.get("/observability/metrics-snapshot")
+async def observability_metrics_snapshot() -> dict[str, Any]:
+    store = getattr(app.state, "observability", _build_observability_store())
+    recent_latencies = list(store.get("latency_ms_recent", []))
+    requests_total = int(store.get("requests_total", 0))
+    errors_total = int(store.get("errors_total", 0))
+
+    error_rate_percent = round((errors_total / requests_total) * 100, 2) if requests_total > 0 else 0.0
+    average_latency_ms = round(sum(recent_latencies) / len(recent_latencies), 2) if recent_latencies else 0.0
+
+    top_paths = sorted(
+        store.get("path_counts", {}).items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:10]
+
+    return {
+        "service": "video-api",
+        "startedAt": store.get("started_at"),
+        "requestsTotal": requests_total,
+        "errorsTotal": errors_total,
+        "errorRatePercent": error_rate_percent,
+        "latencyMs": {
+            "average": average_latency_ms,
+            "p95": _percentile(recent_latencies, 95),
+            "sampleSize": len(recent_latencies),
+        },
+        "statusCounts": dict(store.get("status_counts", {})),
+        "topPaths": [{"path": path, "count": count} for path, count in top_paths],
+        "notes": [
+            "This endpoint provides lightweight in-app observability for Sprint #3 learning.",
+            "Use a dedicated metrics backend for production-scale retention and alerting.",
+        ],
+    }
 
 
 @app.get("/api/admin/probes")
