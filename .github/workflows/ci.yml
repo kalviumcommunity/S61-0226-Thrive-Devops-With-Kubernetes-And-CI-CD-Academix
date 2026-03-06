@@ -314,6 +314,9 @@ jobs:
     env:
       HELM_RELEASE: video-platform
       K8S_NAMESPACE: default
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
