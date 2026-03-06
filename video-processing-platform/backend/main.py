@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import google.generativeai as genai
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -29,6 +30,30 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("video-api")
+
+HTTP_REQUESTS_TOTAL = Counter(
+    "video_api_http_requests_total",
+    "Total HTTP requests processed by the video API.",
+    ["method", "path", "status"],
+)
+
+HTTP_REQUEST_ERRORS_TOTAL = Counter(
+    "video_api_http_request_errors_total",
+    "Total HTTP requests ending with server error status codes.",
+    ["method", "path"],
+)
+
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "video_api_http_request_duration_seconds",
+    "HTTP request processing time in seconds.",
+    ["method", "path"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+)
+
+HTTP_REQUESTS_IN_FLIGHT = Gauge(
+    "video_api_http_requests_in_flight",
+    "Current number of in-flight HTTP requests.",
+)
 
 
 def _build_observability_store() -> dict[str, Any]:
@@ -104,13 +129,18 @@ async def observability_middleware(request: Request, call_next):
     start = perf_counter()
     path = request.url.path
     method = request.method
+    HTTP_REQUESTS_IN_FLIGHT.inc()
 
     try:
         response = await call_next(request)
         status_code = response.status_code
     except Exception:
-        latency_ms = (perf_counter() - start) * 1000
+        latency_seconds = perf_counter() - start
+        latency_ms = latency_seconds * 1000
         _record_request_observation(path=path, status_code=500, latency_ms=latency_ms)
+        HTTP_REQUESTS_TOTAL.labels(method=method, path=path, status="500").inc()
+        HTTP_REQUEST_ERRORS_TOTAL.labels(method=method, path=path).inc()
+        HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path).observe(latency_seconds)
         logger.exception(
             "request_failed request_id=%s method=%s path=%s status=500 latency_ms=%.2f",
             request_id,
@@ -119,9 +149,16 @@ async def observability_middleware(request: Request, call_next):
             latency_ms,
         )
         raise
+    finally:
+        HTTP_REQUESTS_IN_FLIGHT.dec()
 
-    latency_ms = (perf_counter() - start) * 1000
+    latency_seconds = perf_counter() - start
+    latency_ms = latency_seconds * 1000
     _record_request_observation(path=path, status_code=status_code, latency_ms=latency_ms)
+    HTTP_REQUESTS_TOTAL.labels(method=method, path=path, status=str(status_code)).inc()
+    if status_code >= 500:
+        HTTP_REQUEST_ERRORS_TOTAL.labels(method=method, path=path).inc()
+    HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path).observe(latency_seconds)
     logger.info(
         "request_complete request_id=%s method=%s path=%s status=%s latency_ms=%.2f",
         request_id,
@@ -894,6 +931,11 @@ async def observability_metrics_snapshot() -> dict[str, Any]:
             "Use a dedicated metrics backend for production-scale retention and alerting.",
         ],
     }
+
+
+@app.get("/metrics")
+async def prometheus_metrics() -> Response:
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/api/admin/probes")

@@ -173,6 +173,17 @@ def test_observability_metrics_snapshot():
     assert "statusCounts" in body
 
 
+def test_prometheus_metrics_endpoint():
+    # Generate traffic so exported metrics include non-zero observations.
+    client.get("/health")
+
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "text/plain" in response.headers.get("content-type", "")
+    assert "video_api_http_requests_total" in response.text
+    assert "video_api_http_request_duration_seconds" in response.text
+
+
 def test_readiness_probe_can_fail_without_liveness_failing():
     toggle = client.post("/api/admin/probes/readiness", json={"enabled": False})
     assert toggle.status_code == 200
