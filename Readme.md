@@ -42,6 +42,12 @@ This repository contains a video-based learning platform featuring:
   - Request latency/status logs
   - Lightweight metrics endpoint: `GET /observability/metrics-snapshot`
 
+## Sprint #3: Monitoring with Prometheus and Grafana
+
+- Monitoring setup guide: `video-processing-platform/docs/prometheus-grafana-monitoring.md`
+- Kubernetes monitoring manifests: `video-processing-platform/k8s/monitoring/prometheus-grafana.yaml`
+- Prometheus scrape endpoint exposed by backend: `GET /metrics`
+
 ## UI Improvements
 
 The student library and other pages have been tightened up with narrower containers and reduced spacing to fit more cleanly on smaller screens. Video cards are more compact, and live transcript highlighting keeps learners focused.
