@@ -131,7 +131,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -144,7 +144,7 @@ jobs:
         with:
           context: ./video-processing-platform/backend
           file: ./video-processing-platform/backend/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -155,7 +155,7 @@ jobs:
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:latest
 
       - name: Publish backend image summary
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: |
           {
             echo "### Backend Image Push"
@@ -165,7 +165,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify backend image push
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: docker buildx imagetools inspect ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-backend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
 
   frontend-build:
@@ -253,7 +253,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -274,7 +274,7 @@ jobs:
         with:
           context: ./video-processing-platform/frontend
           file: ./video-processing-platform/frontend/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
           build-args: |
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.CLERK_BUILD_KEY }}
           labels: |
@@ -287,7 +287,7 @@ jobs:
             ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:latest
 
       - name: Publish frontend image summary
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: |
           {
             echo "### Frontend Image Push"
@@ -297,7 +297,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify frontend image push
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
         run: docker buildx imagetools inspect ${{ needs.prepare-image-metadata.outputs.image_namespace }}/video-frontend:${{ needs.prepare-image-metadata.outputs.ci_image_tag }}
 
   deploy-k8s:
@@ -306,7 +306,7 @@ jobs:
       - prepare-image-metadata
       - backend-image
       - frontend-image
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_K8S_DEPLOY == 'true' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.ENABLE_K8S_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
