@@ -18,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   K8S_NAMESPACE: default
@@ -218,12 +219,63 @@ jobs:
         id: image
         run: echo "image=${{ secrets.DOCKER_HUB_USERNAME }}/video-frontend:${{ needs.prepare-image-tags.outputs.image_tag }}" >> "$GITHUB_OUTPUT"
 
+  check-deploy-runner:
+    name: CD - Runner Availability Check
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-image-tags
+      - cd-build-backend-image
+      - cd-build-frontend-image
+    outputs:
+      deploy_runner_ready: ${{ steps.probe.outputs.deploy_runner_ready }}
+    steps:
+      - name: Probe selected runner type
+        id: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          USE_SELF_HOSTED: ${{ vars.USE_SELF_HOSTED }}
+        run: |
+          if [ "$USE_SELF_HOSTED" != "true" ]; then
+            echo "deploy_runner_ready=true" >> "$GITHUB_OUTPUT"
+            echo "Using GitHub-hosted runner for deploy."
+            exit 0
+          fi
+
+          RUNNERS_JSON=$(curl -fsSL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/runners")
+
+          ONLINE_SELF_HOSTED=$(echo "$RUNNERS_JSON" | jq '[.runners[] | select(.status == "online") ] | length')
+
+          if [ "$ONLINE_SELF_HOSTED" -gt 0 ]; then
+            echo "deploy_runner_ready=true" >> "$GITHUB_OUTPUT"
+            echo "Found $ONLINE_SELF_HOSTED online self-hosted runner(s)."
+          else
+            echo "deploy_runner_ready=false" >> "$GITHUB_OUTPUT"
+            echo "No online self-hosted runners found."
+          fi
+
+  cd-deploy-runner-missing:
+    name: CD - Missing Self-Hosted Runner
+    runs-on: ubuntu-latest
+    needs: check-deploy-runner
+    if: ${{ vars.USE_SELF_HOSTED == 'true' && needs.check-deploy-runner.outputs.deploy_runner_ready != 'true' }}
+    steps:
+      - name: Fail fast with remediation
+        run: |
+          echo "::error title=No self-hosted runner available::Deployment is configured with USE_SELF_HOSTED=true, but no online self-hosted runner is available for this repository. Start your self-hosted runner service, or set USE_SELF_HOSTED=false to use ubuntu-latest."
+          exit 1
+
   cd-deploy:
     name: CD - Deploy to Kubernetes
     needs:
       - prepare-image-tags
       - cd-build-backend-image
       - cd-build-frontend-image
+      - check-deploy-runner
+    if: ${{ needs.check-deploy-runner.outputs.deploy_runner_ready == 'true' }}
     runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
