@@ -248,12 +248,21 @@ jobs:
 
           echo "deploy_runs_on=self-hosted" >> "$GITHUB_OUTPUT"
 
-          RUNNERS_JSON=$(curl -fsSL \
+          STATUS_CODE=$(curl -sS \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
+            -o runners.json \
+            -w "%{http_code}" \
             "https://api.github.com/repos/$REPO/actions/runners")
 
-          ONLINE_SELF_HOSTED=$(echo "$RUNNERS_JSON" | jq '[.runners[] | select(.status == "online") ] | length')
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "Warning: Could not query runner API (HTTP $STATUS_CODE)."
+            echo "Proceeding with self-hosted deploy and letting scheduler validate runner availability."
+            echo "deploy_runner_ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ONLINE_SELF_HOSTED=$(jq '[.runners[] | select(.status == "online") ] | length' runners.json)
 
           if [ "$ONLINE_SELF_HOSTED" -gt 0 ]; then
             echo "deploy_runner_ready=true" >> "$GITHUB_OUTPUT"
