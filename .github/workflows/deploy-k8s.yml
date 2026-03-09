@@ -226,8 +226,10 @@ jobs:
       - prepare-image-tags
       - cd-build-backend-image
       - cd-build-frontend-image
+      - detect-deploy-runner-mode
     outputs:
       deploy_runner_ready: ${{ steps.probe.outputs.deploy_runner_ready }}
+      deploy_runs_on: ${{ steps.probe.outputs.deploy_runs_on }}
     steps:
       - name: Probe selected runner type
         id: probe
@@ -235,12 +237,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           USE_SELF_HOSTED: ${{ vars.USE_SELF_HOSTED }}
+          FORCE_SELF_HOSTED: ${{ needs.detect-deploy-runner-mode.outputs.force_self_hosted }}
         run: |
-          if [ "$USE_SELF_HOSTED" != "true" ]; then
+          if [ "$USE_SELF_HOSTED" != "true" ] && [ "$FORCE_SELF_HOSTED" != "true" ]; then
+            echo "deploy_runs_on=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "deploy_runner_ready=true" >> "$GITHUB_OUTPUT"
             echo "Using GitHub-hosted runner for deploy."
             exit 0
           fi
+
+          echo "deploy_runs_on=self-hosted" >> "$GITHUB_OUTPUT"
 
           RUNNERS_JSON=$(curl -fsSL \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -257,11 +263,57 @@ jobs:
             echo "No online self-hosted runners found."
           fi
 
+  detect-deploy-runner-mode:
+    name: CD - Detect Runner Mode
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-image-tags
+      - cd-build-backend-image
+      - cd-build-frontend-image
+    outputs:
+      force_self_hosted: ${{ steps.detect.outputs.force_self_hosted }}
+      kube_server: ${{ steps.detect.outputs.kube_server }}
+    steps:
+      - name: Detect kube API endpoint type
+        id: detect
+        env:
+          KCFG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          if [ -z "$KCFG" ]; then
+            echo "force_self_hosted=false" >> "$GITHUB_OUTPUT"
+            echo "kube_server=unknown" >> "$GITHUB_OUTPUT"
+            echo "KUBE_CONFIG is not set; runner mode not forced."
+            exit 0
+          fi
+
+          TMP_CFG="$(mktemp)"
+          if echo "$KCFG" | base64 -d > "$TMP_CFG" 2>/dev/null; then
+            :
+          else
+            printf '%s' "$KCFG" > "$TMP_CFG"
+          fi
+
+          SERVER="$(awk '/server:/{print $2; exit}' "$TMP_CFG")"
+          if [ -z "$SERVER" ]; then
+            SERVER="unknown"
+          fi
+
+          echo "kube_server=$SERVER" >> "$GITHUB_OUTPUT"
+          echo "Detected kube server endpoint: $SERVER"
+
+          if echo "$SERVER" | grep -Eq 'kubernetes\.docker\.internal|localhost|127\.0\.0\.1'; then
+            echo "force_self_hosted=true" >> "$GITHUB_OUTPUT"
+            echo "Local-only endpoint detected; deployment will target self-hosted runner."
+          else
+            echo "force_self_hosted=false" >> "$GITHUB_OUTPUT"
+            echo "Remote endpoint detected; hosted runner can be used."
+          fi
+
   cd-deploy-runner-missing:
     name: CD - Missing Self-Hosted Runner
     runs-on: ubuntu-latest
     needs: check-deploy-runner
-    if: ${{ vars.USE_SELF_HOSTED == 'true' && needs.check-deploy-runner.outputs.deploy_runner_ready != 'true' }}
+    if: ${{ needs.check-deploy-runner.outputs.deploy_runs_on == 'self-hosted' && needs.check-deploy-runner.outputs.deploy_runner_ready != 'true' }}
     steps:
       - name: Fail fast with remediation
         run: |
@@ -274,9 +326,10 @@ jobs:
       - prepare-image-tags
       - cd-build-backend-image
       - cd-build-frontend-image
+      - detect-deploy-runner-mode
       - check-deploy-runner
     if: ${{ needs.check-deploy-runner.outputs.deploy_runner_ready == 'true' }}
-    runs-on: ${{ vars.USE_SELF_HOSTED == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: ${{ needs.check-deploy-runner.outputs.deploy_runs_on }}
     timeout-minutes: 20
     steps:
       - name: Checkout
