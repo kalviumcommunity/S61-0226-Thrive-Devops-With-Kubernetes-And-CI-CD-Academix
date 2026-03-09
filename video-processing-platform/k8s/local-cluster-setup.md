@@ -101,6 +101,18 @@ curl -I http://api.academix.local/docs
   - Failed rollout simulation
   - Recovery using `kubectl rollout undo`
 
+## End-to-End Release Validation (Sprint #3)
+- To demonstrate production-style deployment confidence checks, follow:
+  - `docs/sprint3-e2e-release-validation.md`
+- Run automated validation:
+  ```powershell
+  ./scripts/validate-k8s-release.ps1 -Namespace default -Checks 6 -IntervalSeconds 10 -ValidateIngress
+  ```
+- This validates:
+  - rollout health and pod readiness
+  - service endpoint wiring
+  - repeated runtime reachability over time
+
 ## Example Output
 ```
 $ kubectl get nodes

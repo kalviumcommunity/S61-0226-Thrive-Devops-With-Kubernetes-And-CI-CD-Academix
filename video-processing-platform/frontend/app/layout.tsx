@@ -25,12 +25,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const disableAuth = process.env.DISABLE_AUTH === "true";
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ClerkProvider>{children}</ClerkProvider>
+        {disableAuth ? children : <ClerkProvider>{children}</ClerkProvider>}
       </body>
     </html>
   );

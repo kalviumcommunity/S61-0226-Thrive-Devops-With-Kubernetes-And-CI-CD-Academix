@@ -6,6 +6,9 @@ metadata:
     app: video-frontend
 spec:
   replicas: 3
+  minReadySeconds: 5
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 180
   selector:
     matchLabels:
       app: video-frontend
@@ -40,6 +43,36 @@ spec:
                 secretKeyRef:
                   name: clerk-secrets
                   key: secret-key
+            - name: DISABLE_AUTH
+              value: "true"
+
+          startupProbe:
+            httpGet:
+              path: /favicon.ico
+              port: 3000
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 30
+
+          livenessProbe:
+            httpGet:
+              path: /favicon.ico
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /favicon.ico
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+            successThreshold: 1
+
           resources:
             requests:
               cpu: "100m"
