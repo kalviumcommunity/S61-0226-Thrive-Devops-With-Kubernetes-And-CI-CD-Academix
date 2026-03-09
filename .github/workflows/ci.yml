@@ -517,11 +517,20 @@ jobs:
 
       - name: Create or update runtime Kubernetes secrets
         env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PAT }}
           CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           MONGO_USERNAME: ${{ secrets.MONGO_USERNAME }}
           MONGO_PASSWORD: ${{ secrets.MONGO_PASSWORD }}
         run: |
+          if ([string]::IsNullOrWhiteSpace("$env:GHCR_TOKEN")) {
+            $env:GHCR_TOKEN = "${{ github.token }}"
+            Write-Host "GHCR_PAT not set; using GITHUB_TOKEN for ghcr-pull-secret."
+          }
+
+          kubectl create secret docker-registry ghcr-pull-secret --namespace "$env:K8S_NAMESPACE" --docker-server=ghcr.io --docker-username="$env:GHCR_USERNAME" --docker-password="$env:GHCR_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
+
           kubectl create secret generic clerk-secrets --namespace "$env:K8S_NAMESPACE" --from-literal=publishable-key="$env:CLERK_PUBLISHABLE_KEY" --from-literal=secret-key="$env:CLERK_SECRET_KEY" --dry-run=client -o yaml | kubectl apply -f -
 
           kubectl create secret generic mongo-secrets --namespace "$env:K8S_NAMESPACE" --from-literal=username="$env:MONGO_USERNAME" --from-literal=password="$env:MONGO_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
