@@ -12,6 +12,25 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Resolve-HelmExecutable {
+  $helmCmd = Get-Command helm -ErrorAction SilentlyContinue
+  if ($helmCmd) {
+    return $helmCmd.Source
+  }
+
+  $wingetLinkHelm = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\helm.exe"
+  if (Test-Path $wingetLinkHelm) {
+    return $wingetLinkHelm
+  }
+
+  $programFilesHelm = "C:\Program Files\Helm\helm.exe"
+  if (Test-Path $programFilesHelm) {
+    return $programFilesHelm
+  }
+
+  throw "Helm CLI not found. Install via 'winget install --id Helm.Helm -e' or add helm.exe to PATH."
+}
+
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Resolve-Path (Join-Path $scriptDir "..")
 $chartPath = Join-Path $projectRoot "charts/video-processing-platform"
@@ -24,7 +43,9 @@ if (-not (Test-Path $envValuesPath)) {
 
 Write-Host "Deploying release '$ReleaseName' to namespace '$Namespace' using '$Environment' values..."
 
-helm upgrade --install $ReleaseName $chartPath `
+$helmExe = Resolve-HelmExecutable
+
+& $helmExe upgrade --install $ReleaseName $chartPath `
   --namespace $Namespace `
   --create-namespace `
   -f $baseValuesPath `

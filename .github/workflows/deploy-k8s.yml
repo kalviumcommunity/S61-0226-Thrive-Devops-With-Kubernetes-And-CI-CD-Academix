@@ -477,16 +477,6 @@ jobs:
             echo "::error title=Local-only kubeconfig endpoint detected::KUBE_CONFIG points to '$SERVER', which is not reachable from GitHub-hosted runners. Use a self-hosted runner with Docker Desktop network access, or provide a remotely reachable Kubernetes API endpoint in KUBE_CONFIG."
             exit 1
           fi
-
-      - name: Guard against local-only kubeconfig on hosted runners
-        run: |
-          SERVER="$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')"
-          echo "Detected kube API server endpoint: $SERVER"
-
-          if echo "$SERVER" | grep -Eq 'kubernetes\.docker\.internal|localhost|127\.0\.0\.1'; then
-            echo "::error title=Local-only kubeconfig endpoint detected::KUBE_CONFIG points to '$SERVER', which is not reachable from GitHub-hosted runners. Use a self-hosted runner with Docker Desktop network access, or provide a remotely reachable Kubernetes API endpoint in KUBE_CONFIG."
-            exit 1
-          fi
           chmod 600 "$HOME/.kube/config"
 
       - name: Verify rollout
