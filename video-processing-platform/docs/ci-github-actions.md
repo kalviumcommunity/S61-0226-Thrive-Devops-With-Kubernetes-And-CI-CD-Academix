@@ -2,10 +2,11 @@
 
 This document explains the working Continuous Integration and Continuous Deployment setup implemented for this repository.
 
-## Workflow File
-- `.github/workflows/ci.yml`
+## Workflow Files
+- Primary automated pipeline: `.github/workflows/ci.yml`
+- Manual fallback CD pipeline: `.github/workflows/deploy-k8s.yml` (`workflow_dispatch`)
 
-Primary automated CI is centralized in `ci.yml` to avoid duplicate runs. Existing service-specific workflow files remain available for manual checks (`workflow_dispatch`).
+Primary automated CI/CD is centralized in `ci.yml` to avoid duplicate runs. Existing service-specific workflow files remain available for manual checks (`workflow_dispatch`).
 
 ## What This CI Workflow Does
 This workflow runs gated stages for both services in this order:
@@ -66,7 +67,8 @@ Both backend and frontend are deployed with the same computed tag for release co
 - GitHub Actions run summary includes commit, tag format, and final pushed image names.
 
 ## Container Registry and Secure Authentication
-- Container registry selected: **GitHub Container Registry** (`ghcr.io`)
+- Primary registry in automated pipeline: **GitHub Container Registry** (`ghcr.io`)
+- Manual fallback workflow can use **Docker Hub** (`deploy-k8s.yml`)
 - CI uses secure authentication via:
    - `username: ${{ github.actor }}`
    - `password: ${{ secrets.GITHUB_TOKEN }}`

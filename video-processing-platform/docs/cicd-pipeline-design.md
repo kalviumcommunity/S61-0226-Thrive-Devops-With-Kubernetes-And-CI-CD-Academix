@@ -29,7 +29,9 @@ This document defines the intended CI/CD design for this project and maps it to 
 ### Stage 3: CD - Artifact Creation and Publication
 - Build versioned Docker images for backend and frontend.
 - Tag images with hybrid semantic/build/commit tags and optional moving tag (`latest`).
-- Push artifacts to container registry (Docker Hub in this project).
+- Push artifacts to container registry.
+	- Primary automated pipeline (`ci.yml`): GHCR (`ghcr.io/<org>/...`)
+	- Manual fallback pipeline (`deploy-k8s.yml`): Docker Hub (`<user>/...`)
 - Purpose: create deployable, traceable artifacts independent of source code.
 
 #### Implemented Tag Format
@@ -86,13 +88,17 @@ Developer commit/PR
 ```
 
 ### What runs on every commit/PR
-- Service-specific CI workflows:
+- Primary workflow:
+	- `.github/workflows/ci.yml`
+- Service-specific workflows are manual-only and used for targeted checks:
 	- `.github/workflows/backend-ci.yml`
 	- `.github/workflows/frontend-ci.yml`
 
 ### What runs on merge to main or manual promotion
-- Deployment workflow:
-	- `.github/workflows/deploy-k8s.yml`
+- Automated deployment path:
+	- `.github/workflows/ci.yml` (deploy stage on `push` to `main` when `ENABLE_K8S_DEPLOY=true`)
+- Manual fallback deployment workflow:
+	- `.github/workflows/deploy-k8s.yml` (`workflow_dispatch`)
 - Default automated environment: `dev`.
 - Optional manual selection: `dev` or `prod` via `workflow_dispatch` input.
 
@@ -142,8 +148,9 @@ The stage contract remains stable even as tool depth increases.
 
 ## 6) Current Workflow File Mapping
 
-- CI (Backend): `.github/workflows/backend-ci.yml`
-- CI (Frontend): `.github/workflows/frontend-ci.yml`
-- CD (Artifact + Deploy + Verify): `.github/workflows/deploy-k8s.yml`
+- Primary CI/CD (build, test, image, optional deploy): `.github/workflows/ci.yml`
+- Manual CI checks (backend): `.github/workflows/backend-ci.yml`
+- Manual CI checks (frontend): `.github/workflows/frontend-ci.yml`
+- Manual fallback CD (artifact + deploy + verify): `.github/workflows/deploy-k8s.yml`
 
 This mapping is the concrete implementation basis for Sprint #3 pipeline design submission.
