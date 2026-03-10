@@ -493,3 +493,50 @@ jobs:
         run: |
           kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-backend -n "$K8S_NAMESPACE" --timeout=240s
           kubectl rollout status deployment/${HELM_RELEASE}-video-processing-platform-frontend -n "$K8S_NAMESPACE" --timeout=240s
+
+      - name: Run live API smoke tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $namespace = "${{ env.K8S_NAMESPACE }}"
+          $service = "${{ env.HELM_RELEASE }}-video-processing-platform-backend-service"
+          $portForwardLog = Join-Path $env:RUNNER_TEMP "backend-port-forward.log"
+
+          # Port-forward from runner to the deployed backend service for deterministic smoke checks.
+          $portForward = Start-Process kubectl -ArgumentList @(
+            "-n", $namespace,
+            "port-forward", "svc/$service",
+            "18000:8000"
+          ) -RedirectStandardOutput $portForwardLog -RedirectStandardError $portForwardLog -PassThru
+
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 2
+              try {
+                $probe = Invoke-WebRequest -Uri "http://127.0.0.1:18000/health" -UseBasicParsing -TimeoutSec 2
+                if ($probe.StatusCode -eq 200) {
+                  $ready = $true
+                  break
+                }
+              }
+              catch {
+                # Keep retrying until the port-forward tunnel is ready.
+              }
+            }
+
+            if (-not $ready) {
+              Write-Host "Port-forward log output:"
+              if (Test-Path $portForwardLog) {
+                Get-Content $portForwardLog
+              }
+              throw "Timed out waiting for backend port-forward readiness."
+            }
+
+            ./video-processing-platform/scripts/smoke-test-live.ps1 -BaseUrl "http://127.0.0.1:18000" -ApiHost "localhost"
+          }
+          finally {
+            if ($portForward -and -not $portForward.HasExited) {
+              Stop-Process -Id $portForward.Id -Force
+            }
+          }
