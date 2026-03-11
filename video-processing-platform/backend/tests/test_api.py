@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, UTC
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from main import app, get_db
+from main import app, get_db, get_known_sample_video_metadata
 
 
 class FakeCursor:
@@ -301,6 +301,36 @@ def test_generated_transcript_persists():
     assert resp2.status_code == 200
     data = resp2.json()
     assert data.get("transcript") == transcript
+
+
+def test_known_sample_video_metadata_is_available():
+    profile = get_known_sample_video_metadata(
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    )
+    assert profile is not None
+    assert profile["title"] == "Big Buck Bunny"
+    assert profile["duration"] == "09:56"
+    assert profile["transcript"][0]["timestamp"] == "00:00"
+
+
+def test_ai_transcript_endpoint_uses_known_sample_video_profile():
+    fake = app.dependency_overrides[get_db]()
+    fake.lectures.docs[0]["videoUrl"] = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+    fake.lectures.docs[0]["title"] = "Distributed Systems 101"
+    fake.lectures.docs[0]["description"] = "Old placeholder description"
+    fake.lectures.docs[0]["duration"] = "42:18"
+
+    resp = client.post("/api/lectures/intro/ai-transcript")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["transcript"][0]["text"].startswith("Opening scene: Big Buck Bunny")
+
+    persisted = client.get("/api/lectures/intro")
+    assert persisted.status_code == 200
+    body = persisted.json()
+    assert body["title"] == "Big Buck Bunny"
+    assert body["duration"] == "09:56"
+    assert body["keyConcepts"][0]["title"] == "Peaceful Opening"
 
 
 def test_get_lecture_includes_seconds():

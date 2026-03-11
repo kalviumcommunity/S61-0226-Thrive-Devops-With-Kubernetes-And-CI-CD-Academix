@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -96,6 +97,109 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 ENABLE_AI_SUMMARY = os.getenv("ENABLE_AI_SUMMARY", "true").lower() == "true"
 ENABLE_LIVE_SUMMARY = os.getenv("ENABLE_LIVE_SUMMARY", "true").lower() == "true"
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+KNOWN_SAMPLE_VIDEO_METADATA: dict[str, dict[str, Any]] = {
+    "BigBuckBunny.mp4": {
+        "title": "Big Buck Bunny",
+        "description": "A laid-back rabbit enjoys a peaceful morning in the forest until three mischievous rodents start harassing the smaller animals around him.",
+        "duration": "09:56",
+        "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+        "aiSummary": "Big Buck Bunny is a short animated comedy that contrasts a calm forest morning with a string of escalating slapstick pranks. The story follows the rabbit from patient observer to clever avenger as he turns the bullies' chaos back on them.",
+        "keyConcepts": [
+            {"title": "Peaceful Opening", "timestamp": "00:00"},
+            {"title": "Bullies Arrive", "timestamp": "01:45"},
+            {"title": "Payback Setup", "timestamp": "05:40"},
+            {"title": "Final Gag", "timestamp": "08:48"},
+        ],
+        "transcript": [
+            {"timestamp": "00:00", "text": "Opening scene: Big Buck Bunny enjoys butterflies, birds, and the calm rhythm of the forest."},
+            {"timestamp": "01:45", "text": "Inciting moment: Three tiny rodents appear and start tormenting other animals for fun."},
+            {"timestamp": "03:25", "text": "Escalation: The pranksters begin targeting the bunny as well, turning the peaceful setting into slapstick chaos."},
+            {"timestamp": "05:40", "text": "Preparation: After taking the abuse in silence, the bunny methodically turns the forest into a trap-filled revenge plan."},
+            {"timestamp": "07:20", "text": "Reversal: Each trap lands in sequence and the bullies get hit by the same kind of mayhem they created."},
+            {"timestamp": "08:48", "text": "Closing beat: The short ends with one final visual joke that completes the bunny's comic payback."},
+        ],
+    },
+    "ElephantsDream.mp4": {
+        "title": "Elephants Dream",
+        "description": "Two travelers move through a surreal machine world while an older guide pushes a younger companion to accept his increasingly distorted view of reality.",
+        "duration": "10:53",
+        "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
+        "aiSummary": "Elephants Dream is a surreal animated short about perspective, control, and the instability of memory inside a giant mechanical labyrinth. The film contrasts Proog's obsession with Emo's uncertainty until the imagined order of the world finally breaks apart.",
+        "keyConcepts": [
+            {"title": "Machine World", "timestamp": "00:00"},
+            {"title": "Proog's Control", "timestamp": "02:10"},
+            {"title": "Emo's Doubt", "timestamp": "05:35"},
+            {"title": "Reality Fractures", "timestamp": "08:50"},
+        ],
+        "transcript": [
+            {"timestamp": "00:00", "text": "Opening scene: Proog leads Emo through an enormous and dreamlike mechanical environment full of moving structures."},
+            {"timestamp": "02:10", "text": "Character dynamic: Proog speaks with certainty about the world around them and treats the machinery as something he understands and controls."},
+            {"timestamp": "05:35", "text": "Tension grows: Emo reacts with hesitation and confusion, suggesting that Proog's explanations do not fully match what is happening."},
+            {"timestamp": "07:25", "text": "Psychological shift: The journey becomes less about navigation and more about whether the machine world reflects obsession, memory, or delusion."},
+            {"timestamp": "08:50", "text": "Climax: The fragile logic holding Proog's reality together starts to collapse, exposing the instability of his worldview."},
+            {"timestamp": "10:10", "text": "Closing beat: The short ends on ambiguity, leaving the viewer with questions about control, trust, and perception."},
+        ],
+    },
+    "Sintel.mp4": {
+        "title": "Sintel",
+        "description": "A young woman travels through harsh terrain while searching for a dragon she once rescued, driven by loyalty, grief, and incomplete memories.",
+        "duration": "14:48",
+        "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg",
+        "aiSummary": "Sintel is an animated fantasy short that follows a lone traveler on a difficult search for the dragon she calls Scales. What begins as a rescue story turns tragic as the journey reveals how memory and loss have reshaped her understanding of the past.",
+        "keyConcepts": [
+            {"title": "Wilderness Journey", "timestamp": "00:00"},
+            {"title": "Scales Backstory", "timestamp": "03:40"},
+            {"title": "Mountain Search", "timestamp": "08:20"},
+            {"title": "Tragic Reveal", "timestamp": "13:10"},
+        ],
+        "transcript": [
+            {"timestamp": "00:00", "text": "Opening scene: Sintel pushes through snow and ruins, clearly exhausted but still focused on reaching her destination."},
+            {"timestamp": "03:40", "text": "Backstory: Flashbacks show how she found an injured baby dragon, cared for it, and formed a close bond with it."},
+            {"timestamp": "06:10", "text": "Loss and pursuit: After the dragon is taken, Sintel commits herself to a long and dangerous search to bring it back."},
+            {"timestamp": "08:20", "text": "Escalation: The journey intensifies as she climbs into hostile terrain and faces larger threats connected to the dragon's world."},
+            {"timestamp": "11:30", "text": "Confrontation: Sintel reaches the dragon she has been hunting, but the encounter does not unfold the way she expects."},
+            {"timestamp": "13:10", "text": "Revelation: The ending reframes the entire quest through grief and memory, giving the story its tragic emotional payoff."},
+        ],
+    },
+    "TearsOfSteel.mp4": {
+        "title": "Tears of Steel",
+        "description": "A small team in a futuristic Amsterdam uses improvised science and emotional history to confront giant robots threatening the city.",
+        "duration": "12:14",
+        "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
+        "aiSummary": "Tears of Steel blends romance, science fiction, and action as a team tries to stop a robotic attack in near-future Amsterdam. The film ties its spectacle to a personal conflict, using a risky time-based intervention to resolve both the invasion and an unfinished relationship.",
+        "keyConcepts": [
+            {"title": "Robot Threat", "timestamp": "00:00"},
+            {"title": "Team Regroups", "timestamp": "03:00"},
+            {"title": "Time Hack Plan", "timestamp": "07:10"},
+            {"title": "Final Confrontation", "timestamp": "10:35"},
+        ],
+        "transcript": [
+            {"timestamp": "00:00", "text": "Opening scene: Amsterdam is under attack by giant robots, establishing the film's high-stakes science-fiction setting."},
+            {"timestamp": "03:00", "text": "Team setup: A small group of specialists regathers and reconnects around a plan to neutralize the machines."},
+            {"timestamp": "05:10", "text": "Personal conflict: The mission is complicated by unresolved tension between key characters whose history still shapes their choices."},
+            {"timestamp": "07:10", "text": "Strategy shift: The group decides to use a precise time-based intervention instead of brute force to stop the attack."},
+            {"timestamp": "09:05", "text": "Execution: The plan moves into action as technology, timing, and emotional stakes converge in the same moment."},
+            {"timestamp": "10:35", "text": "Resolution: The final confrontation connects the robot threat to the characters' relationship, closing the story on both action and emotion."},
+        ],
+    },
+}
+
+
+def get_known_sample_video_metadata(video_url: str | None) -> dict[str, Any] | None:
+    if not video_url:
+        return None
+
+    parsed = urlparse(video_url)
+    video_name = Path(parsed.path).name
+    if not video_name:
+        return None
+
+    profile = KNOWN_SAMPLE_VIDEO_METADATA.get(video_name)
+    if not profile:
+        return None
+
+    return json.loads(json.dumps(profile))
 
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -571,7 +675,16 @@ def build_key_concepts(title: str, transcript: list[dict[str, str]]) -> list[dic
     return concepts
 
 
-async def generate_ai_summary(title: str, description: str, transcript: list[dict[str, str]]) -> str:
+async def generate_ai_summary(
+    title: str,
+    description: str,
+    transcript: list[dict[str, str]],
+    video_url: str | None = None,
+) -> str:
+    sample_profile = get_known_sample_video_metadata(video_url)
+    if sample_profile:
+        return str(sample_profile["aiSummary"])
+
     if not ENABLE_AI_SUMMARY:
         return f"{title} summary generation is disabled for this environment."
 
@@ -601,7 +714,16 @@ Summary (2-3 sentences, engaging and informative):"""
         return f"{title} covers practical concepts with a timestamped transcript for reference."
 
 
-async def generate_ai_transcript(title: str, description: str, duration_seconds: float) -> list[dict[str, str]]:
+async def generate_ai_transcript(
+    title: str,
+    description: str,
+    duration_seconds: float,
+    video_url: str | None = None,
+) -> list[dict[str, str]]:
+    sample_profile = get_known_sample_video_metadata(video_url)
+    if sample_profile:
+        return list(sample_profile["transcript"])
+
     if not GOOGLE_API_KEY:
         return build_transcript(title, description, duration_seconds)
 
@@ -671,7 +793,15 @@ async def generate_ai_segment_summary(title: str, description: str, snippet: str
         return "(live summary unavailable)"
 
 
-async def generate_ai_key_concepts(title: str, transcript: list[dict[str, str]]) -> list[dict[str, str]]:
+async def generate_ai_key_concepts(
+    title: str,
+    transcript: list[dict[str, str]],
+    video_url: str | None = None,
+) -> list[dict[str, str]]:
+    sample_profile = get_known_sample_video_metadata(video_url)
+    if sample_profile:
+        return list(sample_profile["keyConcepts"])
+
     if not GOOGLE_API_KEY:
         return build_key_concepts(title, transcript)
 
@@ -757,14 +887,17 @@ async def enrich_existing_lectures(db: AsyncIOMotorDatabase) -> None:
         if not slug:
             continue
 
-        title = str(lecture.get("title", "Lecture"))
-        description = str(lecture.get("description", "Uploaded lecture"))
+        video_url = str(lecture.get("videoUrl", "") or "")
+        sample_profile = get_known_sample_video_metadata(video_url)
+        title = str(sample_profile.get("title") if sample_profile else lecture.get("title", "Lecture"))
+        description = str(sample_profile.get("description") if sample_profile else lecture.get("description", "Uploaded lecture"))
         existing_duration = str(lecture.get("duration", "00:00"))
-        duration_seconds = parse_duration_to_seconds(existing_duration)
+        duration_seconds = parse_duration_to_seconds(
+            str(sample_profile.get("duration")) if sample_profile else existing_duration
+        )
 
         source_job_id = lecture.get("source_job_id")
-        thumbnail_rel = str(lecture.get("image", "") or "")
-        video_url = str(lecture.get("videoUrl", "") or "")
+        thumbnail_rel = str(sample_profile.get("image") if sample_profile else lecture.get("image", "") or "")
         file_path: Path | None = None
 
         if source_job_id:
@@ -778,7 +911,7 @@ async def enrich_existing_lectures(db: AsyncIOMotorDatabase) -> None:
                 if generate_thumbnail(file_path, thumbnail_path):
                     thumbnail_rel = f"/api/video/{source_job_id}/thumbnail"
 
-        if video_url.startswith(("http://", "https://")):
+        if not sample_profile and video_url.startswith(("http://", "https://")):
             remote_probed_seconds = extract_duration_seconds(video_url)
             if remote_probed_seconds > 0:
                 duration_seconds = remote_probed_seconds
@@ -791,18 +924,24 @@ async def enrich_existing_lectures(db: AsyncIOMotorDatabase) -> None:
             )
 
         transcript = lecture.get("transcript")
-        if not isinstance(transcript, list) or len(transcript) == 0:
-            transcript = await generate_ai_transcript(title, description, duration_seconds)
+        if sample_profile:
+            transcript = list(sample_profile["transcript"])
+        elif not isinstance(transcript, list) or len(transcript) == 0:
+            transcript = await generate_ai_transcript(title, description, duration_seconds, video_url)
 
         key_concepts = lecture.get("keyConcepts")
-        if not isinstance(key_concepts, list) or len(key_concepts) == 0:
-            key_concepts = await generate_ai_key_concepts(title, transcript)
+        if sample_profile:
+            key_concepts = list(sample_profile["keyConcepts"])
+        elif not isinstance(key_concepts, list) or len(key_concepts) == 0:
+            key_concepts = await generate_ai_key_concepts(title, transcript, video_url)
 
         # always regenerate summary to ensure accurate content
         logger.info(f"Generating AI summary for {slug}")
-        ai_summary = await generate_ai_summary(title, description, transcript)
+        ai_summary = await generate_ai_summary(title, description, transcript, video_url)
 
         update_payload = {
+            "title": title,
+            "description": description,
             "duration": format_duration(duration_seconds) if duration_seconds > 0 else existing_duration,
             "image": thumbnail_rel,
             "transcript": transcript,
@@ -824,24 +963,27 @@ async def seed_demo_lectures(db: AsyncIOMotorDatabase) -> None:
     demo_lectures = [
         {
             "slug": "distributed-systems-101",
-            "title": "Distributed Systems 101",
-            "description": "Core concepts of distributed systems, consensus, and fault tolerance.",
-            "duration": "42:18",
-            "image": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+            "title": "Big Buck Bunny",
+            "description": "A laid-back rabbit enjoys a peaceful morning in the forest until three mischievous rodents start harassing the smaller animals around him.",
+            "duration": "09:56",
+            "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
             "publishedDate": "February 24, 2026",
             "views": "128 views",
-            "aiSummary": "An overview of distributed systems, CAP tradeoffs, and practical patterns for resiliency.",
+            "aiSummary": "Big Buck Bunny is a short animated comedy that contrasts a calm forest morning with a string of escalating slapstick pranks. The story follows the rabbit from patient observer to clever avenger as he turns the bullies' chaos back on them.",
             "keyConcepts": [
-                {"title": "Consensus Basics", "timestamp": "08:15"},
-                {"title": "Replication", "timestamp": "17:42"},
-                {"title": "Failure Modes", "timestamp": "31:09"},
+                {"title": "Peaceful Opening", "timestamp": "00:00"},
+                {"title": "Bullies Arrive", "timestamp": "01:45"},
+                {"title": "Payback Setup", "timestamp": "05:40"},
+                {"title": "Final Gag", "timestamp": "08:48"},
             ],
             "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
             "transcript": [
-                {"timestamp": "00:00", "text": "We introduce distributed systems and why they are needed for scale."},
-                {"timestamp": "08:15", "text": "Consensus is required when multiple nodes must agree on state."},
-                {"timestamp": "17:42", "text": "Replication improves availability but introduces consistency trade-offs."},
-                {"timestamp": "31:09", "text": "Failure modes are analyzed to design resilient system behavior."},
+                {"timestamp": "00:00", "text": "Opening scene: Big Buck Bunny enjoys butterflies, birds, and the calm rhythm of the forest."},
+                {"timestamp": "01:45", "text": "Inciting moment: Three tiny rodents appear and start tormenting other animals for fun."},
+                {"timestamp": "03:25", "text": "Escalation: The pranksters begin targeting the bunny as well, turning the peaceful setting into slapstick chaos."},
+                {"timestamp": "05:40", "text": "Preparation: After taking the abuse in silence, the bunny methodically turns the forest into a trap-filled revenge plan."},
+                {"timestamp": "07:20", "text": "Reversal: Each trap lands in sequence and the bullies get hit by the same kind of mayhem they created."},
+                {"timestamp": "08:48", "text": "Closing beat: The short ends with one final visual joke that completes the bunny's comic payback."},
             ],
             "created_at": now,
             "updated_at": now,
@@ -849,24 +991,27 @@ async def seed_demo_lectures(db: AsyncIOMotorDatabase) -> None:
         },
         {
             "slug": "cloud-native-architecture",
-            "title": "Cloud Native Architecture",
-            "description": "Designing resilient services with containers, service meshes, and observability.",
-            "duration": "36:52",
-            "image": "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1200&q=80",
+            "title": "Elephants Dream",
+            "description": "Two travelers move through a surreal machine world while an older guide pushes a younger companion to accept his increasingly distorted view of reality.",
+            "duration": "10:53",
+            "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
             "publishedDate": "February 24, 2026",
             "views": "92 views",
-            "aiSummary": "Explore container orchestration patterns and the building blocks of cloud native systems.",
+            "aiSummary": "Elephants Dream is a surreal animated short about perspective, control, and the instability of memory inside a giant mechanical labyrinth. The film contrasts Proog's obsession with Emo's uncertainty until the imagined order of the world finally breaks apart.",
             "keyConcepts": [
-                {"title": "Containers", "timestamp": "05:20"},
-                {"title": "Service Mesh", "timestamp": "18:03"},
-                {"title": "Tracing", "timestamp": "27:11"},
+                {"title": "Machine World", "timestamp": "00:00"},
+                {"title": "Proog's Control", "timestamp": "02:10"},
+                {"title": "Emo's Doubt", "timestamp": "05:35"},
+                {"title": "Reality Fractures", "timestamp": "08:50"},
             ],
             "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
             "transcript": [
-                {"timestamp": "00:00", "text": "Cloud native architecture starts with containerized services."},
-                {"timestamp": "05:20", "text": "Containers make deployment predictable and portable."},
-                {"timestamp": "18:03", "text": "Service meshes add traffic policy, retries, and observability."},
-                {"timestamp": "27:11", "text": "Tracing reveals latency bottlenecks across distributed services."},
+                {"timestamp": "00:00", "text": "Opening scene: Proog leads Emo through an enormous and dreamlike mechanical environment full of moving structures."},
+                {"timestamp": "02:10", "text": "Character dynamic: Proog speaks with certainty about the world around them and treats the machinery as something he understands and controls."},
+                {"timestamp": "05:35", "text": "Tension grows: Emo reacts with hesitation and confusion, suggesting that Proog's explanations do not fully match what is happening."},
+                {"timestamp": "07:25", "text": "Psychological shift: The journey becomes less about navigation and more about whether the machine world reflects obsession, memory, or delusion."},
+                {"timestamp": "08:50", "text": "Climax: The fragile logic holding Proog's reality together starts to collapse, exposing the instability of his worldview."},
+                {"timestamp": "10:10", "text": "Closing beat: The short ends on ambiguity, leaving the viewer with questions about control, trust, and perception."},
             ],
             "created_at": now,
             "updated_at": now,
@@ -874,24 +1019,27 @@ async def seed_demo_lectures(db: AsyncIOMotorDatabase) -> None:
         },
         {
             "slug": "ai-powered-learning",
-            "title": "AI-Powered Learning",
-            "description": "Using AI to personalize learning journeys and improve comprehension.",
-            "duration": "28:07",
-            "image": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
+            "title": "Sintel",
+            "description": "A young woman travels through harsh terrain while searching for a dragon she once rescued, driven by loyalty, grief, and incomplete memories.",
+            "duration": "14:48",
+            "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg",
             "publishedDate": "February 24, 2026",
             "views": "64 views",
-            "aiSummary": "See how AI can recommend content, summarize lectures, and guide study plans.",
+            "aiSummary": "Sintel is an animated fantasy short that follows a lone traveler on a difficult search for the dragon she calls Scales. What begins as a rescue story turns tragic as the journey reveals how memory and loss have reshaped her understanding of the past.",
             "keyConcepts": [
-                {"title": "Adaptive Paths", "timestamp": "06:48"},
-                {"title": "Engagement Signals", "timestamp": "13:52"},
-                {"title": "Outcome Metrics", "timestamp": "22:05"},
+                {"title": "Wilderness Journey", "timestamp": "00:00"},
+                {"title": "Scales Backstory", "timestamp": "03:40"},
+                {"title": "Mountain Search", "timestamp": "08:20"},
+                {"title": "Tragic Reveal", "timestamp": "13:10"},
             ],
             "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
             "transcript": [
-                {"timestamp": "00:00", "text": "AI can personalize learning experiences for different student profiles."},
-                {"timestamp": "06:48", "text": "Adaptive paths adjust pacing and content recommendations in real time."},
-                {"timestamp": "13:52", "text": "Engagement signals help identify where students need support."},
-                {"timestamp": "22:05", "text": "Outcome metrics measure how personalized strategies improve retention."},
+                {"timestamp": "00:00", "text": "Opening scene: Sintel pushes through snow and ruins, clearly exhausted but still focused on reaching her destination."},
+                {"timestamp": "03:40", "text": "Backstory: Flashbacks show how she found an injured baby dragon, cared for it, and formed a close bond with it."},
+                {"timestamp": "06:10", "text": "Loss and pursuit: After the dragon is taken, Sintel commits herself to a long and dangerous search to bring it back."},
+                {"timestamp": "08:20", "text": "Escalation: The journey intensifies as she climbs into hostile terrain and faces larger threats connected to the dragon's world."},
+                {"timestamp": "11:30", "text": "Confrontation: Sintel reaches the dragon she has been hunting, but the encounter does not unfold the way she expects."},
+                {"timestamp": "13:10", "text": "Revelation: The ending reframes the entire quest through grief and memory, giving the story its tragic emotional payoff."},
             ],
             "created_at": now,
             "updated_at": now,
@@ -899,24 +1047,27 @@ async def seed_demo_lectures(db: AsyncIOMotorDatabase) -> None:
         },
         {
             "slug": "security-for-streaming",
-            "title": "Security for Streaming Platforms",
-            "description": "Protecting media content with authentication, authorization, and audit trails.",
-            "duration": "33:40",
-            "image": "https://images.unsplash.com/photo-1556155092-8707de31f9c4?auto=format&fit=crop&w=1200&q=80",
+            "title": "Tears of Steel",
+            "description": "A small team in a futuristic Amsterdam uses improvised science and emotional history to confront giant robots threatening the city.",
+            "duration": "12:14",
+            "image": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/TearsOfSteel.jpg",
             "publishedDate": "February 24, 2026",
             "views": "41 views",
-            "aiSummary": "A practical guide to securing content delivery pipelines and user access patterns.",
+            "aiSummary": "Tears of Steel blends romance, science fiction, and action as a team tries to stop a robotic attack in near-future Amsterdam. The film ties its spectacle to a personal conflict, using a risky time-based intervention to resolve both the invasion and an unfinished relationship.",
             "keyConcepts": [
-                {"title": "Access Control", "timestamp": "09:05"},
-                {"title": "Token Security", "timestamp": "18:47"},
-                {"title": "Audit Logging", "timestamp": "27:33"},
+                {"title": "Robot Threat", "timestamp": "00:00"},
+                {"title": "Team Regroups", "timestamp": "03:00"},
+                {"title": "Time Hack Plan", "timestamp": "07:10"},
+                {"title": "Final Confrontation", "timestamp": "10:35"},
             ],
             "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
             "transcript": [
-                {"timestamp": "00:00", "text": "Streaming security starts with strong identity and access management."},
-                {"timestamp": "09:05", "text": "Access control policies should map clearly to user roles."},
-                {"timestamp": "18:47", "text": "Short-lived tokens reduce the impact of leaked credentials."},
-                {"timestamp": "27:33", "text": "Audit logs provide traceability for compliance and incident response."},
+                {"timestamp": "00:00", "text": "Opening scene: Amsterdam is under attack by giant robots, establishing the film's high-stakes science-fiction setting."},
+                {"timestamp": "03:00", "text": "Team setup: A small group of specialists regathers and reconnects around a plan to neutralize the machines."},
+                {"timestamp": "05:10", "text": "Personal conflict: The mission is complicated by unresolved tension between key characters whose history still shapes their choices."},
+                {"timestamp": "07:10", "text": "Strategy shift: The group decides to use a precise time-based intervention instead of brute force to stop the attack."},
+                {"timestamp": "09:05", "text": "Execution: The plan moves into action as technology, timing, and emotional stakes converge in the same moment."},
+                {"timestamp": "10:35", "text": "Resolution: The final confrontation connects the robot threat to the characters' relationship, closing the story on both action and emotion."},
             ],
             "created_at": now,
             "updated_at": now,
@@ -1537,13 +1688,30 @@ async def regenerate_ai_transcript(
     if not doc:
         raise HTTPException(status_code=404, detail="Lecture not found")
 
-    title = str(doc.get("title", "Lecture"))
-    description = str(doc.get("description", ""))
-    duration_seconds = parse_duration_to_seconds(str(doc.get("duration", "0:00")))
-    transcript = await generate_ai_transcript(title, description, duration_seconds)
+    video_url = str(doc.get("videoUrl", "") or "")
+    sample_profile = get_known_sample_video_metadata(video_url)
+    title = str(sample_profile.get("title") if sample_profile else doc.get("title", "Lecture"))
+    description = str(sample_profile.get("description") if sample_profile else doc.get("description", ""))
+    duration_seconds = parse_duration_to_seconds(
+        str(sample_profile.get("duration")) if sample_profile else str(doc.get("duration", "0:00"))
+    )
+    transcript = await generate_ai_transcript(title, description, duration_seconds, video_url)
+    key_concepts = await generate_ai_key_concepts(title, transcript, video_url)
+    ai_summary = await generate_ai_summary(title, description, transcript, video_url)
     await db.lectures.update_one(
         {"slug": slug},
-        {"$set": {"transcript": transcript, "updated_at": utcnow()}},
+        {
+            "$set": {
+                "title": title,
+                "description": description,
+                "duration": format_duration(duration_seconds) if duration_seconds > 0 else str(doc.get("duration", "0:00")),
+                "image": str(sample_profile.get("image")) if sample_profile else str(doc.get("image", "") or ""),
+                "transcript": transcript,
+                "keyConcepts": key_concepts,
+                "aiSummary": ai_summary,
+                "updated_at": utcnow(),
+            }
+        },
     )
     return {"transcript": transcript}
 
