@@ -26,7 +26,6 @@ import json
 
 load_dotenv()
 
-load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("video-api")
@@ -207,10 +206,7 @@ progress_manager = ProgressConnectionManager()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -459,30 +455,105 @@ def generate_thumbnail(file_path: Path, thumbnail_path: Path) -> bool:
 
 
 def _sentence_chunks(text: str) -> list[str]:
-    segments = [segment.strip() for segment in re.split(r"[.!?]+", text) if segment.strip()]
-    return segments[:6]
+    normalized = re.sub(r"\s+", " ", text or "").strip()
+    if not normalized:
+        return []
+
+    segments = [segment.strip(" -") for segment in re.split(r"[.!?]+", normalized) if segment.strip()]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+
+    for segment in segments:
+        if len(segment) < 12:
+            continue
+        segment = segment[0].upper() + segment[1:] if segment else segment
+        if not segment.endswith((".", "!", "?")):
+            segment = f"{segment}."
+        dedupe_key = re.sub(r"\W+", "", segment.lower())
+        if dedupe_key and dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        cleaned.append(segment)
+
+    return cleaned[:8]
 
 
 def build_transcript(title: str, description: str, duration_seconds: float) -> list[dict[str, str]]:
     chunks = _sentence_chunks(description)
+    title_words = [word for word in re.split(r"\W+", title) if len(word) > 2]
+    keyword_candidates = [word for word in re.split(r"\W+", description) if len(word) >= 5]
+    keywords = list(dict.fromkeys(word.lower() for word in keyword_candidates))[:8]
+
+    if duration_seconds <= 300:
+        section_count = 4
+    elif duration_seconds <= 1200:
+        section_count = 5
+    else:
+        section_count = 6
+
+    phase_labels = [
+        "Introduction",
+        "Core concept",
+        "Worked example",
+        "Practical guidance",
+        "Common pitfalls",
+        "Recap",
+    ]
+
     if not chunks:
+        title_phrase = " ".join(title_words[:3]) if title_words else title
         chunks = [
-            f"Welcome to {title}.",
-            "In this section we review core ideas and practical examples.",
-            "We summarize the implementation details and next actions.",
+            f"This lecture introduces {title_phrase} and explains why it matters in real systems.",
+            "We break down the main ideas step by step with concrete examples.",
+            "You will see practical implementation choices and trade-offs.",
+            "We close with actionable takeaways you can apply immediately.",
         ]
 
-    section_count = max(3, min(6, len(chunks)))
     safe_duration = max(180, int(duration_seconds) if duration_seconds > 0 else 180)
     interval = max(20, safe_duration // section_count)
 
     transcript: list[dict[str, str]] = []
     for index in range(section_count):
         timestamp = format_duration(index * interval)
-        source_text = chunks[index] if index < len(chunks) else chunks[-1]
+        if index < len(chunks):
+            source_text = chunks[index]
+        else:
+            focus = keywords[(index - len(chunks)) % len(keywords)] if keywords else "key techniques"
+            source_text = f"We focus on {focus} and connect it to practical decision-making in this topic."
+
+        label = phase_labels[index] if index < len(phase_labels) else f"Section {index + 1}"
+        source_text = f"{label}: {source_text}"
         transcript.append({"timestamp": timestamp, "text": source_text})
 
     return transcript
+
+
+def _parse_transcript_line(line: str) -> tuple[str, str] | None:
+    text = line.strip()
+    if not text:
+        return None
+
+    patterns = [
+        r"^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.+)$",
+        r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–:]\s*(.+)$",
+        r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(.+)$",
+    ]
+
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if not match:
+            continue
+        timestamp_raw = match.group(1).strip()
+        body = match.group(2).strip()
+        if not body:
+            return None
+        seconds = int(parse_duration_to_seconds(timestamp_raw))
+        timestamp = format_duration(seconds)
+        if not body.endswith((".", "!", "?")):
+            body = f"{body}."
+        return timestamp, body
+
+    return None
 
 
 def build_key_concepts(title: str, transcript: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -535,17 +606,17 @@ async def generate_ai_transcript(title: str, description: str, duration_seconds:
         return build_transcript(title, description, duration_seconds)
 
     try:
-        prompt = f"""Create a detailed educational transcript for a {int(duration_seconds / 60)}-minute lecture.
+        prompt = f"""Create an educational transcript for a {max(3, int(duration_seconds / 60))}-minute lecture.
 
 Title: {title}
 Description: {description}
 
-Generate 4-6 timestamped segments at regular intervals. Each segment should:
+    Generate 5-7 timestamped segments at regular intervals. Each segment should:
 - Start with timestamp in MM:SS format
-- Contain 1-2 sentences of engaging, educational content
+    - Contain exactly 1 concise sentence of educational content
 - Progress logically through the topic
 
-Format each line as: [MM:SS] Content here
+    Output ONLY lines in this format: [MM:SS] Content here
 
 Transcript:"""
 
@@ -557,21 +628,21 @@ Transcript:"""
         
         transcript_text = await asyncio.wait_for(loop.run_in_executor(EXECUTOR, call_genai), timeout=30)
         transcript: list[dict[str, str]] = []
+        used_timestamps: set[str] = set()
 
         for line in transcript_text.split("\n"):
-            line = line.strip()
-            if not line or "[" not in line:
+            parsed = _parse_transcript_line(line)
+            if not parsed:
                 continue
-            try:
-                timestamp_end = line.index("]")
-                timestamp = line[1:timestamp_end].strip()
-                text = line[timestamp_end + 1 :].strip()
-                if timestamp and text:
-                    transcript.append({"timestamp": timestamp, "text": text})
-            except (ValueError, IndexError):
+            timestamp, segment_text = parsed
+            if timestamp in used_timestamps:
                 continue
+            used_timestamps.add(timestamp)
+            transcript.append({"timestamp": timestamp, "text": segment_text})
 
-        if not transcript:
+        transcript.sort(key=lambda item: parse_duration_to_seconds(item["timestamp"]))
+
+        if len(transcript) < 3:
             return build_transcript(title, description, duration_seconds)
         return transcript
     except Exception as e:
