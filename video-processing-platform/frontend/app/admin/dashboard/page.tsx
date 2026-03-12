@@ -15,7 +15,6 @@ import Footer from "../../../components/Footer";
 import Navbar from "../../../components/Navbar";
 import { retryJob, fetchDashboardSummary, type DashboardSummary } from "../../../lib/admin";
 import { apiBaseUrl } from "../../../lib/api";
-import { deleteLecture, fetchLectures, type Lecture, updateLecture } from "../../student/lectures";
 
 type StatCard = {
   icon: React.ComponentType<{ className?: string }>;
@@ -63,11 +62,6 @@ export default function AdminDashboardPage() {
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [backendWarning, setBackendWarning] = useState<string | null>(null);
 
-  const [lectures, setLectures] = useState<Lecture[]>([]);
-  const [selectedLectureSlug, setSelectedLectureSlug] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-
   const computedStats = useMemo<StatCard[]>(() => {
     return [
       {
@@ -93,13 +87,13 @@ export default function AdminDashboardPage() {
       },
       {
         icon: BarChart3,
-        title: "Total Lectures",
-        value: String(dashboardSummary?.totalLectures ?? lectures.length),
-        subtext: "Published content",
+        title: "Active Lectures",
+        value: String(dashboardSummary?.totalLectures ?? 0),
+        subtext: "Visible in the student catalog",
         iconColor: "text-indigo-500",
       },
     ];
-  }, [dashboardSummary, lectures.length]);
+  }, [dashboardSummary]);
 
   const loadDashboardSummary = async (withSpinner = false) => {
     try {
@@ -128,21 +122,8 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const loadLectures = async () => {
-    try {
-      const payload = await fetchLectures();
-      setLectures(payload);
-      setBackendWarning(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to load lectures";
-      setBackendWarning(message);
-      setLectures([]);
-    }
-  };
-
   useEffect(() => {
     void loadDashboardSummary();
-    void loadLectures();
   }, []);
 
   useEffect(() => {
@@ -186,7 +167,7 @@ export default function AdminDashboardPage() {
       }
 
       if (needsRefresh) {
-        await Promise.all([loadLectures(), loadDashboardSummary()]);
+        await loadDashboardSummary();
       }
     };
 
@@ -266,57 +247,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const startEditLecture = (lecture: Lecture) => {
-    setSelectedLectureSlug(lecture.slug);
-    setEditTitle(lecture.title);
-    setEditDescription(lecture.description);
-  };
-
-  const handleUpdateLecture = async () => {
-    if (!selectedLectureSlug) {
-      return;
-    }
-
-    try {
-      await updateLecture(selectedLectureSlug, {
-        title: editTitle.trim(),
-        description: editDescription.trim(),
-      });
-
-      setLectures((current) =>
-        current.map((lecture) =>
-          lecture.slug === selectedLectureSlug
-            ? { ...lecture, title: editTitle.trim(), description: editDescription.trim() }
-            : lecture,
-        ),
-      );
-      setSelectedLectureSlug(null);
-      setEditTitle("");
-      setEditDescription("");
-      setFormMessage("Lecture updated successfully.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not update lecture details.";
-      setFormError(message);
-    }
-  };
-
-  const handleDeleteLecture = async (slug: string) => {
-    try {
-      await deleteLecture(slug);
-      setLectures((current) => current.filter((lecture) => lecture.slug !== slug));
-      if (selectedLectureSlug === slug) {
-        setSelectedLectureSlug(null);
-        setEditTitle("");
-        setEditDescription("");
-      }
-      setFormMessage("Lecture deleted.");
-      await loadDashboardSummary();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not delete lecture.";
-      setFormError(message);
-    }
-  };
-
   const handleRetryJob = async (targetJobId: string) => {
     try {
       setRetryingJobId(targetJobId);
@@ -337,7 +267,7 @@ export default function AdminDashboardPage() {
       <Navbar active="admin" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-4xl px-4 py-6">
+        <section className="mx-auto w-full max-w-6xl px-4 py-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-4xl font-bold text-slate-900">Admin Dashboard</h1>

@@ -1292,7 +1292,7 @@ async def get_dashboard_summary(
     active_jobs = await db.jobs.count_documents({"status": {"$in": ["queued", "processing"]}})
     completed_jobs = await db.jobs.count_documents({"status": "completed"})
     failed_jobs = await db.jobs.count_documents({"status": "failed"})
-    total_lectures = await db.lectures.count_documents({})
+    total_lectures = await db.lectures.count_documents({"isDeleted": {"$ne": True}})
 
     recent_jobs_cursor = db.jobs.find({}).sort("updated_at", -1).limit(8)
     recent_jobs: list[DashboardJob] = []
@@ -1531,18 +1531,19 @@ async def export_transcript(
 @app.get("/api/lectures", response_model=list[Lecture])
 async def list_lectures(
     q: str | None = Query(default=None, max_length=120),
+    includeDeleted: bool = Query(default=False),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> list[Lecture]:
     filters: dict[str, Any] = {}
+    if not includeDeleted:
+        filters["isDeleted"] = {"$ne": True}
     search_query = (q or "").strip()
     if search_query:
         escaped = re.escape(search_query)
-        filters = {
-            "$or": [
-                {"title": {"$regex": escaped, "$options": "i"}},
-                {"description": {"$regex": escaped, "$options": "i"}},
-            ]
-        }
+        filters["$or"] = [
+            {"title": {"$regex": escaped, "$options": "i"}},
+            {"description": {"$regex": escaped, "$options": "i"}},
+        ]
 
     cursor = db.lectures.find(filters).sort("created_at", -1)
     results: list[Lecture] = []
@@ -1624,7 +1625,7 @@ async def get_lecture(
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> Lecture:
     doc = await db.lectures.find_one({"slug": slug})
-    if not doc:
+    if not doc or doc.get("isDeleted"):
         raise HTTPException(status_code=404, detail="Lecture not found")
     return lecture_from_doc(doc)
 
@@ -1721,9 +1722,20 @@ async def delete_lecture(
     slug: str,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict[str, str]:
-    result = await db.lectures.delete_one({"slug": slug})
-    if result.deleted_count == 0:
+    existing = await db.lectures.find_one({"slug": slug})
+    if not existing:
         raise HTTPException(status_code=404, detail="Lecture not found")
+
+    await db.lectures.update_one(
+        {"slug": slug},
+        {
+            "$set": {
+                "isDeleted": True,
+                "lastAction": "deleted",
+                "updated_at": utcnow(),
+            }
+        },
+    )
     return {"message": "Lecture deleted"}
 
 
