@@ -48,21 +48,30 @@ export type LectureUpdate = Partial<
   >
 >;
 
-export async function fetchLectures(query?: string): Promise<Lecture[]> {
-  const trimmedQuery = query?.trim();
-  const endpoint = trimmedQuery
-    ? `${apiBaseUrl}/api/lectures?q=${encodeURIComponent(trimmedQuery)}`
-    : `${apiBaseUrl}/api/lectures`;
+type FetchLecturesOptions = {
+  includeDeleted?: boolean;
+};
 
-  return await fetchJson<Lecture[]>(endpoint, {
-    headers: {},
-  });
+export async function fetchLectures(query?: string, options?: FetchLecturesOptions): Promise<Lecture[]> {
+  const params = new URLSearchParams();
+  const trimmedQuery = query?.trim();
+
+  if (trimmedQuery) {
+    params.set("q", trimmedQuery);
+  }
+
+  if (options?.includeDeleted) {
+    params.set("includeDeleted", "true");
+  }
+
+  const queryString = params.toString();
+  const endpoint = queryString ? `${apiBaseUrl}/api/lectures?${queryString}` : `${apiBaseUrl}/api/lectures`;
+
+  return await fetchJson<Lecture[]>(endpoint);
 }
 
 export async function fetchLecture(slug: string): Promise<Lecture> {
-  return await fetchJson<Lecture>(`${apiBaseUrl}/api/lectures/${slug}`, {
-    headers: {},
-  });
+  return await fetchJson<Lecture>(`${apiBaseUrl}/api/lectures/${slug}`);
 }
 
 export async function updateLecture(slug: string, payload: LectureUpdate): Promise<Lecture> {
@@ -73,21 +82,13 @@ export async function updateLecture(slug: string, payload: LectureUpdate): Promi
 }
 
 export async function fetchProgress(slug: string, userId: string): Promise<{ progress: number }> {
-  return await fetchJson<{ progress: number }>(`${apiBaseUrl}/api/lectures/${slug}/progress/${userId}`, {
-    headers: {},
-  });
+  return await fetchJson<{ progress: number }>(`${apiBaseUrl}/api/lectures/${slug}/progress/${userId}`);
 }
 
 export async function updateProgress(slug: string, userId: string, seconds: number): Promise<{ progress: number }> {
   return await fetchJson<{ progress: number }>(`${apiBaseUrl}/api/lectures/${slug}/progress`, {
     method: "POST",
     body: JSON.stringify({ userId, seconds }),
-  });
-}
-
-export async function deleteLecture(slug: string): Promise<void> {
-  await fetchJson<{ message: string }>(`${apiBaseUrl}/api/lectures/${slug}`, {
-    method: "DELETE",
   });
 }
 

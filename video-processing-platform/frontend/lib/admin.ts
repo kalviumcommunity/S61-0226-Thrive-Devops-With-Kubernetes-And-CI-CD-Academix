@@ -17,9 +17,7 @@ export type DashboardSummary = {
 };
 
 export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  return await fetchJson<DashboardSummary>(`${apiBaseUrl}/api/admin/dashboard-summary`, {
-    headers: {},
-  });
+  return await fetchJson<DashboardSummary>(`${apiBaseUrl}/api/admin/dashboard-summary`);
 }
 
 export async function retryJob(jobId: string): Promise<{ message: string; job_id: string }> {
