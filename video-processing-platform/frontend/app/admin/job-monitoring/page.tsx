@@ -324,33 +324,33 @@ export default function JobMonitoringPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-br from-slate-100 via-white to-blue-50 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_35%,_#ffffff_100%)] text-slate-900">
       <Navbar active="monitoring" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-6xl px-4 py-6">
-          <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 px-6 py-6 shadow-lg">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20">
-                  <Activity className="h-3 w-3 text-white" />
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 md:py-8">
+          <div className="rounded-2xl border border-slate-200/70 bg-white/85 px-5 py-5 shadow-lg shadow-slate-200/40 backdrop-blur md:px-7">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                  <Activity className="h-3 w-3" />
+                  Admin Control Center
                 </span>
-                <p className="text-xs font-semibold uppercase tracking-widest text-indigo-200">Admin Panel</p>
+                <h1 className="mt-3 text-4xl font-bold text-slate-900">Job Monitoring</h1>
+                <p className="mt-1 text-lg text-slate-500">
+                  Track transcoding jobs, investigate failures, and keep lecture metadata aligned with pipeline output.
+                </p>
               </div>
-              <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-white">Job Monitoring</h1>
-              <p className="mt-1 text-sm text-indigo-200">
-                Track transcoding jobs, investigate failures, and keep lecture metadata aligned with pipeline output.
-              </p>
+              <button
+                type="button"
+                onClick={() => void refreshPageData(true)}
+                disabled={isRefreshing}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                Refresh Metrics
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void refreshPageData(true)}
-              disabled={isRefreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
           </div>
 
           {backendWarning ? (
@@ -360,14 +360,14 @@ export default function JobMonitoringPage() {
             </div>
           ) : null}
 
-          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50">
                   <History className="h-4 w-4 text-indigo-500" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Job History</h2>
+                  <h2 className="text-xl font-bold text-slate-900">Job History</h2>
                   <p className="mt-0.5 text-xs text-slate-500">Filter recent jobs by status, filename, or linked lecture.</p>
                 </div>
               </div>
@@ -478,13 +478,6 @@ export default function JobMonitoringPage() {
                   }[job.status];
 
 
-                  const accentColor = {
-                    queued:     "border-l-blue-400",
-                    processing: "border-l-amber-400",
-                    completed:  "border-l-emerald-400",
-                    failed:     "border-l-rose-400",
-                  }[job.status];
-
                   const lectureLine =
                     linkedLecture
                       ? linkedLecture.title
@@ -502,7 +495,7 @@ export default function JobMonitoringPage() {
                         : "text-slate-400";
 
                   return (
-                    <article key={job.id} className={`group rounded-xl border border-l-4 border-slate-100 bg-white px-5 py-4 shadow-sm transition-all hover:-translate-y-px hover:shadow-md ${accentColor}`}>
+                    <article key={job.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:bg-white">
                       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,2.4fr)_0.9fr_1fr_0.9fr_auto] lg:items-center lg:gap-4">
                         <div className="flex min-w-0 items-start gap-2.5">
                           <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
@@ -526,7 +519,7 @@ export default function JobMonitoringPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-800">{job.filename}</p>
-                            <p className="mt-0.5 font-mono text-[10px] text-slate-300">{job.id}</p>
+                            <p className="mt-0.5 font-mono text-[10px] text-slate-400">{job.id}</p>
                             <p className={`mt-0.5 truncate text-xs ${lectureLineColor}`}>
                               {linkedLecture && (
                                 <span className="mr-1 text-slate-400">↳</span>
@@ -573,7 +566,7 @@ export default function JobMonitoringPage() {
                               type="button"
                               onClick={() => void handleRetryJob(job.id)}
                               disabled={retryingJobId === job.id}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               <RotateCcw className="h-3 w-3" />
                               {retryingJobId === job.id ? "Retrying…" : "Retry"}
@@ -602,14 +595,14 @@ export default function JobMonitoringPage() {
             </div>
           </section>
 
-          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-50">
                   <BookOpen className="h-4 w-4 text-emerald-500" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Manage Lectures</h2>
+                  <h2 className="text-xl font-bold text-slate-900">Manage Lectures</h2>
                   <p className="mt-0.5 text-xs text-slate-500">Review the catalog state that each pipeline job feeds into.</p>
                 </div>
               </div>
@@ -706,10 +699,10 @@ export default function JobMonitoringPage() {
                   return (
                     <div
                       key={lecture.slug}
-                      className={`flex flex-wrap items-start justify-between gap-3 rounded-xl border px-4 py-3 transition ${
+                      className={`flex flex-wrap items-start justify-between gap-3 rounded-lg border px-4 py-3 shadow-sm transition ${
                         isDeleted
-                          ? "border-slate-100 bg-slate-50/60 opacity-75"
-                          : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm"
+                          ? "border-slate-200 bg-slate-50 opacity-80"
+                          : "border-slate-200 bg-slate-50 hover:bg-white"
                       }`}
                     >
                       <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -731,8 +724,8 @@ export default function JobMonitoringPage() {
                               {lecture.title}
                             </p>
                           </div>
-                          <p className="mt-0.5 truncate text-xs text-slate-400">{lecture.description}</p>
-                          <p className="mt-0.5 font-mono text-[10px] text-slate-300">{lecture.slug}</p>
+                          <p className="mt-0.5 truncate text-xs text-slate-500">{lecture.description}</p>
+                          <p className="mt-0.5 font-mono text-[10px] text-slate-400">{lecture.slug}</p>
                         </div>
                       </div>
 
@@ -742,7 +735,7 @@ export default function JobMonitoringPage() {
                             type="button"
                             onClick={() => void handleRestoreLecture(lecture.slug)}
                             disabled={isMutating}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             <RotateCcw className="h-3.5 w-3.5" />
                             {isMutating ? "Restoring..." : "Restore"}
@@ -753,7 +746,7 @@ export default function JobMonitoringPage() {
                               type="button"
                               onClick={() => startEditLecture(lecture)}
                               disabled={isMutating}
-                              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               Edit
                             </button>
@@ -761,7 +754,7 @@ export default function JobMonitoringPage() {
                               type="button"
                               onClick={() => void handleDeleteLecture(lecture.slug)}
                               disabled={isMutating}
-                              className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="rounded-md border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               {isMutating ? "Deleting..." : "Delete"}
                             </button>

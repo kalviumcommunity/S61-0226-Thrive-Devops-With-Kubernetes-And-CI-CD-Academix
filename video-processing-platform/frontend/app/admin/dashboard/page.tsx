@@ -15,6 +15,7 @@ import Footer from "../../../components/Footer";
 import Navbar from "../../../components/Navbar";
 import { retryJob, fetchDashboardSummary, type DashboardSummary } from "../../../lib/admin";
 import { apiBaseUrl } from "../../../lib/api";
+import { SUBJECT_OPTIONS } from "../../../lib/subjects";
 
 type StatCard = {
   icon: React.ComponentType<{ className?: string }>;
@@ -47,6 +48,7 @@ function formatUpdatedAt(value: string): string {
 
 export default function AdminDashboardPage() {
   const [lectureTitle, setLectureTitle] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState<(typeof SUBJECT_OPTIONS)[number]>("Computer Science");
   const [description, setDescription] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -61,6 +63,10 @@ export default function AdminDashboardPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [backendWarning, setBackendWarning] = useState<string | null>(null);
+
+  const failedRecentJobs = useMemo(() => {
+    return (dashboardSummary?.recentJobs ?? []).filter((job) => job.status === "failed");
+  }, [dashboardSummary]);
 
   const computedStats = useMemo<StatCard[]>(() => {
     return [
@@ -104,7 +110,6 @@ export default function AdminDashboardPage() {
       setDashboardSummary(payload);
       setBackendWarning(null);
 
-      // Track active jobs from dashboard summary
       const activeIds = new Set<string>();
       for (const job of payload.recentJobs) {
         if (job.status === "queued" || job.status === "processing") {
@@ -143,7 +148,7 @@ export default function AdminDashboardPage() {
 
     const fetchJobStatuses = async () => {
       const newStatuses = new Map<string, JobStatus>();
-      
+
       for (const jobId of activeJobIds) {
         try {
           const response = await fetch(`${apiBaseUrl}/api/status/${jobId}`, { cache: "no-store" });
@@ -152,15 +157,14 @@ export default function AdminDashboardPage() {
             newStatuses.set(jobId, payload);
           }
         } catch {
-          // Silently skip failed requests
+          // Ignore individual status fetch errors and keep polling other jobs.
         }
       }
 
       setJobStatuses(newStatuses);
 
-      // Check if any jobs are now completed/failed
       let needsRefresh = false;
-      for (const [jobId, status] of newStatuses) {
+      for (const status of newStatuses.values()) {
         if (status.status === "completed" || status.status === "failed") {
           needsRefresh = true;
         }
@@ -220,6 +224,7 @@ export default function AdminDashboardPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("title", lectureTitle.trim());
+      formData.append("subject", selectedSubject);
       formData.append("description", description.trim());
 
       const response = await fetch(`${apiBaseUrl}/api/upload`, {
@@ -263,34 +268,39 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_35%,_#ffffff_100%)] text-slate-900">
       <Navbar active="admin" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-6xl px-4 py-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-4xl font-bold text-slate-900">Admin Dashboard</h1>
-              <p className="mt-1 text-lg text-slate-500">
-                Monitor your video pipeline and manage lecture content.
-              </p>
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 md:py-8">
+          <div className="rounded-2xl border border-slate-200/70 bg-white/85 px-5 py-5 shadow-lg shadow-slate-200/40 backdrop-blur md:px-7">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                  Admin Control Center
+                </span>
+                <h1 className="mt-3 text-4xl font-bold text-slate-900">Admin Dashboard</h1>
+                <p className="mt-1 text-lg text-slate-500">
+                  Monitor your video pipeline and publish lecture content with subject metadata.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadDashboardSummary(true)}
+                disabled={isRefreshingSummary}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshingSummary ? "animate-spin" : ""}`} />
+                Refresh Metrics
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadDashboardSummary(true)}
-              disabled={isRefreshingSummary}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshingSummary ? "animate-spin" : ""}`} />
-              Refresh Metrics
-            </button>
-          </div>
 
-          {backendWarning ? (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {backendWarning}
-            </div>
-          ) : null}
+            {backendWarning ? (
+              <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {backendWarning}
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {computedStats.map((stat) => {
@@ -316,8 +326,8 @@ export default function AdminDashboardPage() {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-3xl font-bold text-slate-900">Upload Lecture Video</h2>
-              <p className="mt-1 text-lg text-slate-500">Add new content to the learning platform.</p>
+              <h2 className="text-2xl font-bold text-slate-900">Upload Lecture Video</h2>
+              <p className="mt-1 text-sm text-slate-500">Add new content to the learning platform.</p>
 
               <form className="mt-5 space-y-4" onSubmit={handleUpload}>
                 <div>
@@ -330,6 +340,22 @@ export default function AdminDashboardPage() {
                     onChange={(event) => setLectureTitle(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:border-indigo-300"
                   />
+                </div>
+
+                <div>
+                  <label htmlFor="lecture-subject" className="text-xs font-semibold text-slate-700">Subject</label>
+                  <select
+                    id="lecture-subject"
+                    value={selectedSubject}
+                    onChange={(event) => setSelectedSubject(event.target.value as (typeof SUBJECT_OPTIONS)[number])}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-300"
+                  >
+                    {SUBJECT_OPTIONS.filter((subject) => subject !== "All Subjects").map((subject) => (
+                      <option key={subject} value={subject}>
+                        {subject}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -376,8 +402,8 @@ export default function AdminDashboardPage() {
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-3xl font-bold text-slate-900">Live Job Pipeline</h2>
-                  <p className="mt-1 text-lg text-slate-500">Real-time status of video processing tasks.</p>
+                  <h2 className="text-2xl font-bold text-slate-900">Live Job Pipeline</h2>
+                  <p className="mt-1 text-sm text-slate-500">Real-time status of video processing tasks.</p>
                 </div>
                 {jobStatuses.size > 0 ? (
                   <span className="inline-flex items-center gap-2 rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">
@@ -404,8 +430,8 @@ export default function AdminDashboardPage() {
                     return (
                       <div key={job.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800 truncate">{job.filename}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-slate-800">{job.filename}</p>
                             <p className="text-xs text-slate-500">Job ID: {job.id}</p>
                           </div>
                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${statusColor}`}>
@@ -452,8 +478,38 @@ export default function AdminDashboardPage() {
                 </div>
               )}
             </section>
-
           </div>
+
+          <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-slate-900">Recent Failed Jobs</h2>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500">
+                <ShieldAlert className="h-3.5 w-3.5" />
+                Retry from here
+              </span>
+            </div>
+
+            {failedRecentJobs.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {failedRecentJobs.map((job) => (
+                  <article key={job.id} className="rounded-lg border border-rose-200 bg-rose-50/60 p-4">
+                    <p className="truncate text-sm font-semibold text-slate-800">{job.filename}</p>
+                    <p className="mt-1 text-xs text-slate-500">Last updated: {formatUpdatedAt(job.updatedAt)}</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleRetryJob(job.id)}
+                      disabled={retryingJobId === job.id}
+                      className="mt-3 inline-flex items-center gap-1 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {retryingJobId === job.id ? "Retrying..." : "Retry Job"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-slate-500">No failed jobs in recent history.</p>
+            )}
+          </section>
         </section>
       </main>
 
