@@ -453,13 +453,13 @@ jobs:
       K8S_NAMESPACE: default
     defaults:
       run:
-        shell: powershell
+          shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up kubectl
-        shell: powershell
+          shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         run: |
           $ver = "v1.32.0"
           $bin = "$env:USERPROFILE\tools\kubectl"
@@ -469,7 +469,7 @@ jobs:
           Write-Host "kubectl $ver installed to $bin"
 
       - name: Set up Helm
-        shell: powershell
+          shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         run: |
           $ver = "v3.17.0"
           $tmp = "$env:TEMP\helm-install"
