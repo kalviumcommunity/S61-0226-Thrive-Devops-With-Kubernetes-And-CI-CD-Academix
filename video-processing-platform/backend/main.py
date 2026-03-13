@@ -330,6 +330,7 @@ class TranscriptSegment(BaseModel):
 class Lecture(BaseModel):
     slug: str
     title: str
+    subject: str = "General"
     description: str
     duration: str
     # numeric seconds parsed from `duration` string, helpful for progress bars
@@ -359,6 +360,7 @@ class ProgressPayload(BaseModel):
 
 class LectureUpdate(BaseModel):
     title: str | None = None
+    subject: str | None = None
     description: str | None = None
     duration: str | None = None
     image: str | None = None
@@ -421,6 +423,7 @@ def get_db() -> AsyncIOMotorDatabase:
 async def ensure_db_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.lectures.create_index("created_at")
     await db.lectures.create_index("title")
+    await db.lectures.create_index("subject")
     await db.lectures.create_index("description")
 
 
@@ -436,6 +439,7 @@ def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
     return Lecture(
         slug=doc["slug"],
         title=doc["title"],
+        subject=str(doc.get("subject") or "General"),
         description=doc["description"],
         duration=doc["duration"],
         durationSeconds=dur_secs,
@@ -1192,6 +1196,7 @@ async def set_readiness_probe(payload: ProbeTogglePayload) -> dict[str, Any]:
 async def upload_video(
     file: UploadFile = File(...),
     title: str | None = Form(None),
+    subject: str | None = Form(None),
     description: str | None = Form(None),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict[str, str]:
@@ -1217,6 +1222,7 @@ async def upload_video(
         raise HTTPException(status_code=500, detail="Could not persist uploaded file") from error
 
     title_value = (title or "").strip() or sanitized_name
+    subject_value = (subject or "").strip() or "General"
     description_value = (description or "").strip() or "Uploaded lecture"
     lecture_slug = f"{slugify(title_value)}-{job_id}"
 
@@ -1225,6 +1231,7 @@ async def upload_video(
         "filename": sanitized_name,
         "content_type": file.content_type,
         "title": title_value,
+        "subject": subject_value,
         "description": description_value,
         "status": "queued",
         "progress": 0.0,
@@ -1237,6 +1244,7 @@ async def upload_video(
     lecture_doc = {
         "slug": lecture_slug,
         "title": title_value,
+        "subject": subject_value,
         "description": description_value,
         "duration": "00:00",
         "image": "",
@@ -1292,7 +1300,8 @@ async def get_dashboard_summary(
     active_jobs = await db.jobs.count_documents({"status": {"$in": ["queued", "processing"]}})
     completed_jobs = await db.jobs.count_documents({"status": "completed"})
     failed_jobs = await db.jobs.count_documents({"status": "failed"})
-    total_lectures = await db.lectures.count_documents({"isDeleted": {"$ne": True}})
+    # Use operator-free counts so test fakes and MongoDB behave consistently.
+    total_lectures = await db.lectures.count_documents({}) - await db.lectures.count_documents({"isDeleted": True})
 
     recent_jobs_cursor = db.jobs.find({}).sort("updated_at", -1).limit(8)
     recent_jobs: list[DashboardJob] = []
@@ -1531,6 +1540,7 @@ async def export_transcript(
 @app.get("/api/lectures", response_model=list[Lecture])
 async def list_lectures(
     q: str | None = Query(default=None, max_length=120),
+    subject: str | None = Query(default=None, max_length=80),
     includeDeleted: bool = Query(default=False),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> list[Lecture]:
@@ -1544,6 +1554,11 @@ async def list_lectures(
             {"title": {"$regex": escaped, "$options": "i"}},
             {"description": {"$regex": escaped, "$options": "i"}},
         ]
+
+    subject_query = (subject or "").strip()
+    if subject_query and subject_query.lower() != "all subjects":
+        escaped_subject = re.escape(subject_query)
+        filters["subject"] = {"$regex": f"^{escaped_subject}$", "$options": "i"}
 
     cursor = db.lectures.find(filters).sort("created_at", -1)
     results: list[Lecture] = []

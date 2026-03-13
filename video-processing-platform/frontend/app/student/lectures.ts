@@ -4,6 +4,7 @@ import { apiBaseUrl, fetchJson, resolveApiUrl } from "../../lib/api";
 export type Lecture = {
   slug: string;
   title: string;
+  subject?: string;
   description: string;
   duration: string;
   // numeric seconds parsed by the server for convenience
@@ -50,14 +51,20 @@ export type LectureUpdate = Partial<
 
 type FetchLecturesOptions = {
   includeDeleted?: boolean;
+  subject?: string;
 };
 
 export async function fetchLectures(query?: string, options?: FetchLecturesOptions): Promise<Lecture[]> {
   const params = new URLSearchParams();
   const trimmedQuery = query?.trim();
+  const trimmedSubject = options?.subject?.trim();
 
   if (trimmedQuery) {
     params.set("q", trimmedQuery);
+  }
+
+  if (trimmedSubject && trimmedSubject.toLowerCase() !== "all subjects") {
+    params.set("subject", trimmedSubject);
   }
 
   if (options?.includeDeleted) {

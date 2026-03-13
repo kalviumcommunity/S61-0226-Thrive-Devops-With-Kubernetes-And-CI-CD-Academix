@@ -4,16 +4,16 @@ import { fetchLectures } from "./lectures";
 import { currentUser } from "@clerk/nextjs/server";
 import SearchLecturesInput from "./SearchLecturesInput";
 import LectureCard from "./LectureCard";
-
-const subjects = ["All Subjects", "Computer Science", "Mathematics", "Business", "UX Design"];
+import { normalizeSubject, SUBJECT_OPTIONS } from "../../lib/subjects";
 
 type StudentLibraryPageProps = {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; subject?: string }>;
 };
 
 export default async function StudentLibraryPage({ searchParams }: StudentLibraryPageProps) {
-  const { q } = await searchParams;
+  const { q, subject } = await searchParams;
   const query = (q ?? "").trim();
+  const selectedSubject = normalizeSubject(subject);
   let lectures = [] as Awaited<ReturnType<typeof fetchLectures>>;
   let loadError: string | null = null;
 
@@ -21,21 +21,36 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
   const user = await currentUser();
 
   try {
-    lectures = await fetchLectures(query);
+    lectures = await fetchLectures(query, { subject: selectedSubject });
   } catch {
     loadError = "Lecture service is currently unavailable. Please try again shortly.";
   }
 
+  const getSubjectHref = (targetSubject: string) => {
+    const params = new URLSearchParams();
+    if (query) {
+      params.set("q", query);
+    }
+    if (targetSubject !== "All Subjects") {
+      params.set("subject", targetSubject);
+    }
+    const next = params.toString();
+    return next ? `/student?${next}` : "/student";
+  };
+
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_35%,_#ffffff_100%)] text-slate-900">
       <Navbar active="library" />
 
       <main className="flex-1">
-        <section className="mx-auto w-full max-w-5xl px-4 py-6 md:py-8">
-          <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-white to-indigo-50/50 p-5 shadow-sm md:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-5">
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 md:py-8">
+          <div className="rounded-3xl border border-slate-200/70 bg-white/90 p-5 shadow-lg shadow-slate-200/40 backdrop-blur md:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-6">
               <div className="max-w-2xl">
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">My Learning Library</h1>
+                <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                  Student Library
+                </span>
+                <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">My Learning Library</h1>
                 <p className="mt-2 text-base leading-relaxed text-slate-600 md:text-lg">
                   Continue where you left off and explore new topics.
                 </p>
@@ -46,19 +61,27 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2.5">
-              {subjects.map((subject, index) => (
-                <button
-                  key={subject}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    index === 0
-                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
-                  }`}
-                >
-                  {subject}
-                </button>
-              ))}
+            <div className="mt-6 flex flex-wrap items-center gap-2.5">
+              {SUBJECT_OPTIONS.map((subjectOption) => {
+                const isActive = selectedSubject === subjectOption;
+                return (
+                  <a
+                    key={subjectOption}
+                    href={getSubjectHref(subjectOption)}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                      isActive
+                        ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    {subjectOption}
+                  </a>
+                );
+              })}
+
+              <span className="ml-auto rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                Showing: {selectedSubject}
+              </span>
             </div>
 
             {loadError ? (
@@ -76,7 +99,7 @@ export default async function StudentLibraryPage({ searchParams }: StudentLibrar
             </div>
           ) : (
             <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-10 text-center text-slate-500 shadow-sm">
-              {query ? "No lectures found for your search." : "No lectures available yet."}
+              {query ? "No lectures found for your search." : `No lectures available for ${selectedSubject}.`}
             </div>
           )}
         </section>

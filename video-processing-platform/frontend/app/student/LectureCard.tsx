@@ -80,6 +80,11 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
       </div>
 
       <div className="flex flex-1 flex-col p-5 md:p-6">
+        {lecture.subject ? (
+          <span className="mb-2 inline-flex w-fit rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            {lecture.subject}
+          </span>
+        ) : null}
         <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-slate-900 md:text-xl">{lecture.title}</h2>
         <p className="mt-2 line-clamp-3 min-h-14 text-sm leading-relaxed text-slate-600">{lecture.description}</p>
         {userId && lecture.progress && lecture.progress[userId] > 0 ? (
