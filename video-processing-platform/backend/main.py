@@ -1300,7 +1300,8 @@ async def get_dashboard_summary(
     active_jobs = await db.jobs.count_documents({"status": {"$in": ["queued", "processing"]}})
     completed_jobs = await db.jobs.count_documents({"status": "completed"})
     failed_jobs = await db.jobs.count_documents({"status": "failed"})
-    total_lectures = await db.lectures.count_documents({"isDeleted": {"$ne": True}})
+    # Use operator-free counts so test fakes and MongoDB behave consistently.
+    total_lectures = await db.lectures.count_documents({}) - await db.lectures.count_documents({"isDeleted": True})
 
     recent_jobs_cursor = db.jobs.find({}).sort("updated_at", -1).limit(8)
     recent_jobs: list[DashboardJob] = []
