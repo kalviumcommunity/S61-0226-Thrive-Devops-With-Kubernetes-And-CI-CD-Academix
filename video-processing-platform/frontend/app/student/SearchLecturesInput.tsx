@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -30,6 +30,13 @@ export default function SearchLecturesInput({ initialQuery = "" }: SearchLecture
       }
 
       const next = params.toString();
+      const current = searchParams.toString();
+
+      // Skip navigation when nothing changed in the URL query string.
+      if (next === current) {
+        return;
+      }
+
       router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
     }, 300);
 
@@ -47,6 +54,16 @@ export default function SearchLecturesInput({ initialQuery = "" }: SearchLecture
         placeholder="Search lectures..."
         className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
       />
+      {value ? (
+        <button
+          type="button"
+          onClick={() => setValue("")}
+          aria-label="Clear search"
+          className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </label>
   );
 }
