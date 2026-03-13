@@ -453,16 +453,34 @@ jobs:
       K8S_NAMESPACE: default
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        shell: powershell
+        run: |
+          $ver = "v1.32.0"
+          $bin = "$env:USERPROFILE\tools\kubectl"
+          New-Item -ItemType Directory -Path $bin -Force | Out-Null
+          Invoke-WebRequest -Uri "https://dl.k8s.io/release/$ver/bin/windows/amd64/kubectl.exe" -OutFile "$bin\kubectl.exe" -UseBasicParsing
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+          Write-Host "kubectl $ver installed to $bin"
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        shell: powershell
+        run: |
+          $ver = "v3.17.0"
+          $tmp = "$env:TEMP\helm-install"
+          New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+          Invoke-WebRequest -Uri "https://get.helm.sh/helm-$ver-windows-amd64.zip" -OutFile "$tmp\helm.zip" -UseBasicParsing
+          Expand-Archive -Path "$tmp\helm.zip" -DestinationPath $tmp -Force
+          $bin = "$env:USERPROFILE\tools\helm"
+          New-Item -ItemType Directory -Path $bin -Force | Out-Null
+          Copy-Item "$tmp\windows-amd64\helm.exe" "$bin\helm.exe" -Force
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
+          Write-Host "Helm $ver installed to $bin"
 
       - name: Resolve deployment environment
         run: |
