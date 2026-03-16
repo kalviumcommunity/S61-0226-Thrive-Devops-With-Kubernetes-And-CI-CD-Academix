@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { ChevronRight, MessageSquareText, Sparkles } from "lucide-react";
 import { apiBaseUrl } from "../lectures";
 
@@ -25,7 +25,6 @@ type LectureInsightsProps = {
 
 export default function LectureInsights({ slug, aiSummary, keyConcepts, transcript, currentTime, onSeek }: LectureInsightsProps) {
   const [activeTab, setActiveTab] = useState<"summary" | "transcript">("summary");
-  const [searchTerm, setSearchTerm] = useState("");
   const [localTranscript, setLocalTranscript] = useState(transcript);
   const [regenerating, setRegenerating] = useState(false);
 
@@ -70,25 +69,6 @@ export default function LectureInsights({ slug, aiSummary, keyConcepts, transcri
     if (parts.length === 2) return parts[0] * 60 + parts[1];
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     return 0;
-  };
-
-  const escapeRegExp = (value: string): string => value.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-
-  const highlightTranscriptText = (text: string, term: string): ReactNode => {
-    if (!term.trim()) {
-      return text;
-    }
-
-    const parts = text.split(new RegExp(`(${escapeRegExp(term.trim())})`, "ig"));
-    return parts.map((part, index) =>
-      index % 2 === 1 ? (
-        <mark key={`${part}-${index}`} className="rounded bg-amber-200 px-0.5 text-slate-900">
-          {part}
-        </mark>
-      ) : (
-        <span key={`${part}-${index}`}>{part}</span>
-      ),
-    );
   };
 
   const normalizedTranscript = useMemo(() => {
@@ -163,41 +143,14 @@ export default function LectureInsights({ slug, aiSummary, keyConcepts, transcri
     }
   }, [activeIdx]);
 
-  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-  const filteredTranscript = useMemo(() => {
-    const withIndex = normalizedTranscript.map((segment, originalIndex) => ({ segment, originalIndex }));
-    if (!normalizedSearchTerm) return withIndex;
-
-    return withIndex.filter(({ segment }) =>
-      segment.text.toLowerCase().includes(normalizedSearchTerm),
-    );
-  }, [normalizedTranscript, normalizedSearchTerm]);
+  const displayedTranscript = useMemo(
+    () => normalizedTranscript.map((segment, originalIndex) => ({ segment, originalIndex })),
+    [normalizedTranscript],
+  );
 
   const matchSummary = useMemo(() => {
-    const total = normalizedTranscript.length;
-    const matched = filteredTranscript.length;
-    if (!normalizedSearchTerm) {
-      return `Showing all ${total} segments`;
-    }
-    return `Matched ${matched} of ${total} segments`;
-  }, [normalizedTranscript.length, filteredTranscript.length, normalizedSearchTerm]);
-
-  const exportTranscript = async (slug: string, format: string) => {
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/lectures/${slug}/transcript/export?format=${format}`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${slug}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("export failed", e);
-    }
-  };
+    return `Showing all ${normalizedTranscript.length} segments`;
+  }, [normalizedTranscript.length]);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -292,47 +245,6 @@ export default function LectureInsights({ slug, aiSummary, keyConcepts, transcri
                     {regenerating ? "Regenerating..." : "Improve with AI"}
                   </button>
                 )}
-                <input
-                  type="text"
-                  placeholder="search transcript..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="rounded-md border px-2 py-1 text-xs"
-                />
-                {searchTerm ? (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="text-xs text-slate-500 underline hover:text-slate-700"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-                {slug ? (
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => exportTranscript(slug, "txt")}
-                      className="text-xs text-indigo-600 underline"
-                    >
-                      TXT
-                    </button>
-                    <button
-                      onClick={() => exportTranscript(slug, "srt")}
-                      className="text-xs text-indigo-600 underline"
-                    >
-                      SRT
-                    </button>
-                  </div>
-                ) : null}
-                <button
-                  onClick={() => {
-                    const allText = normalizedTranscript.map((s) => `${s.timestamp} ${s.text}`).join("\n");
-                    navigator.clipboard.writeText(allText).catch(() => {});
-                  }}
-                  className="text-xs text-indigo-600 underline"
-                  title="Copy entire transcript"
-                >
-                  Copy
-                </button>
               </div>
             </div>
           </div>
@@ -340,12 +252,12 @@ export default function LectureInsights({ slug, aiSummary, keyConcepts, transcri
             {matchSummary}
           </div>
           <div ref={transcriptRef} className="max-h-64 space-y-3 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-50">
-            {filteredTranscript.length === 0 ? (
+            {displayedTranscript.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-500">
-                No matching transcript entries.
+                No transcript entries available.
               </div>
             ) : (
-              filteredTranscript.map(({ segment, originalIndex }) => {
+              displayedTranscript.map(({ segment, originalIndex }) => {
                 const isActive = originalIndex === activeIdx;
                 return (
                   <div
@@ -363,7 +275,7 @@ export default function LectureInsights({ slug, aiSummary, keyConcepts, transcri
                     <p
                       className="mt-1 text-sm leading-relaxed text-slate-700"
                     >
-                      {highlightTranscriptText(segment.text, searchTerm)}
+                      {segment.text}
                     </p>
                   </div>
                 );
