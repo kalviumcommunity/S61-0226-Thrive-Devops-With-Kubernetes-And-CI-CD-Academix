@@ -1,4 +1,5 @@
 import asyncio
+import importlib
 import logging
 import os
 import re
@@ -15,7 +16,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import google.generativeai as genai
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -97,6 +98,20 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 ENABLE_AI_SUMMARY = os.getenv("ENABLE_AI_SUMMARY", "true").lower() == "true"
 ENABLE_LIVE_SUMMARY = os.getenv("ENABLE_LIVE_SUMMARY", "true").lower() == "true"
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
+MEDIA_STORAGE_DRIVER = os.getenv("MEDIA_STORAGE_DRIVER", "local").strip().lower()
+MEDIA_S3_BUCKET = os.getenv("MEDIA_S3_BUCKET", "").strip()
+MEDIA_S3_REGION = os.getenv("MEDIA_S3_REGION", "").strip()
+MEDIA_S3_ENDPOINT_URL = os.getenv("MEDIA_S3_ENDPOINT_URL", "").strip() or None
+MEDIA_S3_ACCESS_KEY_ID = os.getenv("MEDIA_S3_ACCESS_KEY_ID", "").strip() or None
+MEDIA_S3_SECRET_ACCESS_KEY = os.getenv("MEDIA_S3_SECRET_ACCESS_KEY", "").strip() or None
+MEDIA_S3_PUBLIC_BASE_URL = os.getenv("MEDIA_S3_PUBLIC_BASE_URL", "").strip().rstrip("/")
+MEDIA_S3_PRESIGN_EXPIRY_SECONDS = int(os.getenv("MEDIA_S3_PRESIGN_EXPIRY_SECONDS", "3600"))
+CLEANUP_LOCAL_MEDIA = os.getenv("CLEANUP_LOCAL_MEDIA", "false").strip().lower() == "true"
+
+_s3_client: Any | None = None
+boto3: Any | None = None
+BotoCoreError = Exception
+ClientError = Exception
 
 KNOWN_SAMPLE_VIDEO_METADATA: dict[str, dict[str, Any]] = {
     "BigBuckBunny.mp4": {
@@ -425,6 +440,111 @@ async def ensure_db_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.lectures.create_index("title")
     await db.lectures.create_index("subject")
     await db.lectures.create_index("description")
+
+
+def is_object_storage_enabled() -> bool:
+    return MEDIA_STORAGE_DRIVER in {"s3", "aws", "minio"} and bool(MEDIA_S3_BUCKET)
+
+
+def get_s3_client() -> Any:
+    global _s3_client, boto3, BotoCoreError, ClientError
+    if not is_object_storage_enabled():
+        return None
+
+    if boto3 is None:
+        try:
+            _boto3 = importlib.import_module("boto3")
+            _botocore_exceptions = importlib.import_module("botocore.exceptions")
+
+            boto3 = _boto3
+            BotoCoreError = getattr(_botocore_exceptions, "BotoCoreError", Exception)
+            ClientError = getattr(_botocore_exceptions, "ClientError", Exception)
+        except Exception as error:  # pragma: no cover
+            logger.warning("Object storage requested but boto3 is unavailable: %s", error)
+            return None
+
+    if _s3_client is not None:
+        return _s3_client
+
+    client_kwargs: dict[str, Any] = {}
+    if MEDIA_S3_REGION:
+        client_kwargs["region_name"] = MEDIA_S3_REGION
+    if MEDIA_S3_ENDPOINT_URL:
+        client_kwargs["endpoint_url"] = MEDIA_S3_ENDPOINT_URL
+    if MEDIA_S3_ACCESS_KEY_ID and MEDIA_S3_SECRET_ACCESS_KEY:
+        client_kwargs["aws_access_key_id"] = MEDIA_S3_ACCESS_KEY_ID
+        client_kwargs["aws_secret_access_key"] = MEDIA_S3_SECRET_ACCESS_KEY
+
+    _s3_client = boto3.client("s3", **client_kwargs)
+    return _s3_client
+
+
+def build_media_object_key(job_id: str, filename: str, media_kind: str = "video") -> str:
+    if media_kind == "thumbnail":
+        return f"thumbnails/{job_id}.jpg"
+    sanitized_name = Path(filename).name or f"{job_id}.mp4"
+    return f"videos/{job_id}_{sanitized_name}"
+
+
+def build_object_storage_url(object_key: str) -> str:
+    if not object_key:
+        return ""
+    if MEDIA_S3_PUBLIC_BASE_URL:
+        return f"{MEDIA_S3_PUBLIC_BASE_URL}/{object_key}"
+
+    s3_client = get_s3_client()
+    if s3_client is None:
+        return ""
+
+    try:
+        return str(
+            s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": MEDIA_S3_BUCKET, "Key": object_key},
+                ExpiresIn=MEDIA_S3_PRESIGN_EXPIRY_SECONDS,
+            )
+        )
+    except (BotoCoreError, ClientError) as error:
+        logger.warning("Failed generating presigned URL for key %s: %s", object_key, error)
+        return ""
+
+
+def upload_file_to_object_storage(local_path: Path, object_key: str, content_type: str | None = None) -> str:
+    if not is_object_storage_enabled() or not local_path.exists() or not object_key:
+        return ""
+
+    s3_client = get_s3_client()
+    if s3_client is None:
+        return ""
+
+    extra_args: dict[str, str] = {}
+    if content_type:
+        extra_args["ContentType"] = content_type
+
+    try:
+        if extra_args:
+            s3_client.upload_file(str(local_path), MEDIA_S3_BUCKET, object_key, ExtraArgs=extra_args)
+        else:
+            s3_client.upload_file(str(local_path), MEDIA_S3_BUCKET, object_key)
+    except (OSError, BotoCoreError, ClientError) as error:
+        logger.warning("Failed uploading %s to object storage: %s", local_path, error)
+        return ""
+
+    return build_object_storage_url(object_key)
+
+
+def maybe_remove_local_media(file_path: Path | None, thumbnail_path: Path | None) -> None:
+    if not CLEANUP_LOCAL_MEDIA:
+        return
+
+    for media_path in (thumbnail_path, file_path):
+        if not media_path:
+            continue
+        try:
+            if media_path.exists():
+                media_path.unlink()
+        except OSError as error:
+            logger.warning("Could not remove local media file %s: %s", media_path, error)
 
 
 def lecture_from_doc(doc: dict[str, Any]) -> Lecture:
@@ -1225,6 +1345,12 @@ async def upload_video(
     subject_value = (subject or "").strip() or "General"
     description_value = (description or "").strip() or "Uploaded lecture"
     lecture_slug = f"{slugify(title_value)}-{job_id}"
+    media_object_key = ""
+    media_url = ""
+
+    if is_object_storage_enabled() and file_path.exists():
+        media_object_key = build_media_object_key(job_id, sanitized_name, media_kind="video")
+        media_url = upload_file_to_object_storage(file_path, media_object_key, file.content_type)
 
     job_doc = {
         "job_id": job_id,
@@ -1239,6 +1365,9 @@ async def upload_video(
         "created_at": created_at,
         "updated_at": created_at,
         "file_path": str(file_path),
+        "storage_driver": MEDIA_STORAGE_DRIVER,
+        "media_object_key": media_object_key,
+        "media_url": media_url,
     }
 
     lecture_doc = {
@@ -1259,6 +1388,8 @@ async def upload_video(
         "source_job_id": job_id,
         "viewedBy": [],
         "filename": f"{job_id}_{sanitized_name}",
+        "videoBlobKey": media_object_key,
+        "videoBlobUrl": media_url,
     }
 
     try:
@@ -1360,6 +1491,17 @@ async def _resolve_media_response(
     job = await db.jobs.find_one({"job_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+
+    media_object_key = str(job.get("media_object_key", "") or "")
+    media_url = str(job.get("media_url", "") or "")
+
+    if media_object_key:
+        redirect_url = build_object_storage_url(media_object_key) or media_url
+        if redirect_url:
+            return RedirectResponse(url=redirect_url, status_code=307)
+
+    if media_url.startswith(("http://", "https://")):
+        return RedirectResponse(url=media_url, status_code=307)
 
     file_path = job.get("file_path")
     if not file_path or not Path(file_path).exists():
@@ -1771,6 +1913,16 @@ async def stream_video_thumbnail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    thumbnail_object_key = str(job.get("thumbnail_object_key", "") or "")
+    thumbnail_url = str(job.get("thumbnail_url", "") or "")
+    if thumbnail_object_key:
+        redirect_url = build_object_storage_url(thumbnail_object_key) or thumbnail_url
+        if redirect_url:
+            return RedirectResponse(url=redirect_url, status_code=307)
+
+    if thumbnail_url.startswith(("http://", "https://")):
+        return RedirectResponse(url=thumbnail_url, status_code=307)
+
     thumbnail_path = UPLOAD_DIR / "thumbnails" / f"{job_id}.jpg"
     if not thumbnail_path.exists():
         raise HTTPException(status_code=404, detail="Thumbnail not found")
@@ -1804,6 +1956,8 @@ async def transcode(job_id: str) -> None:
         file_path = Path(job_doc.get("file_path", "")) if job_doc else None
         title = str(job_doc.get("title", "Lecture")) if job_doc else "Lecture"
         description = str(job_doc.get("description", "Uploaded lecture")) if job_doc else "Uploaded lecture"
+        media_object_key = str(job_doc.get("media_object_key", "") if job_doc else "")
+        media_url = str(job_doc.get("media_url", "") if job_doc else "")
 
         duration_seconds = extract_duration_seconds(str(file_path)) if file_path and file_path.exists() else 0.0
         duration_formatted = format_duration(duration_seconds) if duration_seconds > 0 else "00:00"
@@ -1818,10 +1972,16 @@ async def transcode(job_id: str) -> None:
         ai_summary = await generate_ai_summary(title, description, transcript)
 
         thumbnail_rel = ""
+        thumbnail_path: Path | None = None
+        thumbnail_object_key = ""
+        thumbnail_url = ""
         if file_path and file_path.exists():
             thumbnail_path = UPLOAD_DIR / "thumbnails" / f"{job_id}.jpg"
             if generate_thumbnail(file_path, thumbnail_path):
                 thumbnail_rel = f"/api/video/{job_id}/thumbnail"
+                if is_object_storage_enabled():
+                    thumbnail_object_key = build_media_object_key(job_id, "", media_kind="thumbnail")
+                    thumbnail_url = upload_file_to_object_storage(thumbnail_path, thumbnail_object_key, "image/jpeg")
 
         update_fields: dict[str, Any] = {
             "duration": duration_formatted,
@@ -1830,7 +1990,13 @@ async def transcode(job_id: str) -> None:
             "keyConcepts": key_concepts,
             "aiSummary": ai_summary,
             "updated_at": utcnow(),
+            "videoBlobKey": media_object_key,
+            "videoBlobUrl": media_url,
         }
+        if thumbnail_object_key:
+            update_fields["thumbnailBlobKey"] = thumbnail_object_key
+        if thumbnail_url:
+            update_fields["thumbnailBlobUrl"] = thumbnail_url
         if metadata:
             update_fields["metadata"] = metadata
 
@@ -1841,8 +2007,18 @@ async def transcode(job_id: str) -> None:
 
         await db.jobs.update_one(
             {"job_id": job_id},
-            {"$set": {"status": "completed", "progress": 100.0, "updated_at": utcnow()}},
+            {
+                "$set": {
+                    "status": "completed",
+                    "progress": 100.0,
+                    "updated_at": utcnow(),
+                    "thumbnail_object_key": thumbnail_object_key,
+                    "thumbnail_url": thumbnail_url,
+                }
+            },
         )
+        if is_object_storage_enabled() and thumbnail_object_key and media_object_key:
+            maybe_remove_local_media(file_path, thumbnail_path)
         logger.info("Job %s transcoding completed", job_id)
     except Exception:  # noqa: BLE001
         logger.exception("Job %s failed during transcoding", job_id)

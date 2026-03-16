@@ -17,4 +17,5 @@ python -m pip install -r requirements.txt
 Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # start server
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
+Write-Host "Backend listening on 0.0.0.0:8000 (LAN-enabled)"
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
