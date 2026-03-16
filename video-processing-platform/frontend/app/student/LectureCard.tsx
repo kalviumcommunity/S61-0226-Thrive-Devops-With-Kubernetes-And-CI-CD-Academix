@@ -37,6 +37,10 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
     return (lecture.progress[userId] / totalDuration) * 100;
   }, [lecture.durationSeconds, lecture.progress, userId]);
 
+  const videoSrc = resolveApiUrl(lecture.videoUrl);
+  const posterSrc = resolveApiUrl(lecture.image);
+  const shouldAutoPreview = Boolean(videoSrc && !posterSrc);
+
   const handleLoadedMetadata = (duration: number) => {
     if (!Number.isFinite(duration) || duration <= 0) {
       return;
@@ -49,17 +53,19 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative h-40 w-full">
-        {lecture.videoUrl ? (
+        {videoSrc ? (
           <video
-            src={resolveApiUrl(lecture.videoUrl)}
-            poster={resolveApiUrl(lecture.image) ?? undefined}
+            src={videoSrc}
+            poster={posterSrc ?? undefined}
             preload="metadata"
             muted
             playsInline
+            autoPlay={shouldAutoPreview}
+            loop={shouldAutoPreview}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget.duration)}
           />
-        ) : (
+        ) : lecture.image ? (
           <Image
             src={lecture.image}
             alt={lecture.title}
@@ -67,6 +73,8 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
             sizes="(max-width: 1280px) 100vw, 400px"
             className="object-cover transition duration-300 group-hover:scale-[1.02]"
           />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 to-transparent" />
         {progressPercent > 0 ? (
