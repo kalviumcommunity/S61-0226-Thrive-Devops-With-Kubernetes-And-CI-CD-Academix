@@ -1,15 +1,18 @@
 "use client";
 
-import { type SyntheticEvent, useRef, useState, useEffect } from "react";
+import { type SyntheticEvent, forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { updateLecture, fetchProgress, updateProgress } from "../lectures";
+
+export type VideoPlayerHandle = {
+  seekTo: (seconds: number) => void;
+};
 
 type VideoPlayerProps = {
   src: string;
   slug: string;
   duration?: string;
   onTimeUpdate?: (seconds: number) => void;
-  seekTime?: number;
 };
 
 function formatDurationFromSeconds(totalSeconds: number): string {
@@ -25,27 +28,38 @@ function formatDurationFromSeconds(totalSeconds: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export default function VideoPlayer({ src, slug, duration, onTimeUpdate, seekTime }: VideoPlayerProps) {
+const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function VideoPlayer(
+  { src, slug, duration, onTimeUpdate }: VideoPlayerProps,
+  ref,
+) {
   const [hasReportedView, setHasReportedView] = useState(false);
   const [hasSyncedDuration, setHasSyncedDuration] = useState(false);
   const syncingDurationRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastSeekAtRef = useRef<number>(0); // ms timestamp of last user-initiated seek
+  const pendingSeekRef = useRef<number | null>(null);
   const { user } = useUser();
   const [resumeSeconds, setResumeSeconds] = useState<number | null>(null);
 
-  // handle external seek requests
-  useEffect(() => {
-    if (
-      seekTime !== undefined &&
-      videoRef.current &&
-      Math.abs((videoRef.current.currentTime || 0) - seekTime) > 0.5
-    ) {
-      videoRef.current.currentTime = seekTime;
-    }
-  }, [seekTime]);
+  useImperativeHandle(ref, () => ({
+    seekTo: (seconds: number) => {
+      lastSeekAtRef.current = Date.now();
+      pendingSeekRef.current = seconds;
+
+      const video = videoRef.current;
+      if (!video) {
+        return;
+      }
+
+      if (video.readyState >= 1) {
+        video.currentTime = seconds;
+        pendingSeekRef.current = null;
+      }
+    },
+  }), []);
 
   const apiBaseUrl =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 
   const handlePlay = async () => {
     if (hasReportedView) {
@@ -105,13 +119,14 @@ export default function VideoPlayer({ src, slug, duration, onTimeUpdate, seekTim
   // open websocket for realtime progress (allows sync across tabs/devices)
   useEffect(() => {
     if (!user || !slug) return;
-    const wsUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/^http/, "ws") +
+    const wsUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001").replace(/^http/, "ws") +
       `/ws/progress/${slug}/${user.id}`;
     const ws = new WebSocket(wsUrl);
     ws.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
-        if (data.progress && videoRef.current) {
+        // ignore WS position updates for 2s after a user-initiated seek to prevent snap-back
+        if (data.progress && videoRef.current && Date.now() - lastSeekAtRef.current > 2000) {
           videoRef.current.currentTime = data.progress;
         }
       } catch (e) {
@@ -130,7 +145,10 @@ export default function VideoPlayer({ src, slug, duration, onTimeUpdate, seekTim
     const videoElement = event.currentTarget;
     const seconds = videoElement.duration;
 
-    if (resumeSeconds && videoRef.current) {
+    if (pendingSeekRef.current != null) {
+      videoElement.currentTime = pendingSeekRef.current;
+      pendingSeekRef.current = null;
+    } else if (resumeSeconds && videoRef.current) {
       videoRef.current.currentTime = resumeSeconds;
       setResumeSeconds(null);
     }
@@ -160,7 +178,7 @@ export default function VideoPlayer({ src, slug, duration, onTimeUpdate, seekTim
     <video
       ref={videoRef}
       controls
-      className="h-[220px] w-full object-cover md:h-[300px] lg:h-[360px]"
+      className="w-full aspect-video bg-black object-contain"
       src={src}
       preload="metadata"
       onPlay={handlePlay}
@@ -180,4 +198,6 @@ export default function VideoPlayer({ src, slug, duration, onTimeUpdate, seekTim
       )}
     </video>
   );
-}
+});
+
+export default VideoPlayer;

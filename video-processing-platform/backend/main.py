@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 import uuid
 from collections import defaultdict, deque
 from time import perf_counter
@@ -16,12 +17,22 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Response, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 import google.generativeai as genai
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+try:
+    import imageio_ffmpeg  # type: ignore[import-not-found]
+except Exception:  # pragma: no cover - optional dependency
+    imageio_ffmpeg = None
+
+try:
+    from faster_whisper import WhisperModel
+except Exception:  # pragma: no cover - optional dependency
+    WhisperModel = None
 
 # new imports for metadata extraction
 import json
@@ -97,6 +108,13 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 ENABLE_AI_SUMMARY = os.getenv("ENABLE_AI_SUMMARY", "true").lower() == "true"
 ENABLE_LIVE_SUMMARY = os.getenv("ENABLE_LIVE_SUMMARY", "true").lower() == "true"
+ENRICH_EXISTING_LECTURES_ON_STARTUP = os.getenv("ENRICH_EXISTING_LECTURES_ON_STARTUP", "false").lower() == "true"
+ENABLE_LOCAL_ASR_FALLBACK = os.getenv("ENABLE_LOCAL_ASR_FALLBACK", "true").lower() == "true"
+LOCAL_ASR_MODEL = os.getenv("LOCAL_ASR_MODEL", "tiny.en").strip() or "tiny.en"
+LOCAL_ASR_DEVICE = os.getenv("LOCAL_ASR_DEVICE", "cpu").strip() or "cpu"
+LOCAL_ASR_COMPUTE_TYPE = os.getenv("LOCAL_ASR_COMPUTE_TYPE", "int8").strip() or "int8"
+LOCAL_ASR_MAX_SEGMENTS = int(os.getenv("LOCAL_ASR_MAX_SEGMENTS", "8"))
+LOCAL_ASR_TIMEOUT_SECONDS = int(os.getenv("LOCAL_ASR_TIMEOUT_SECONDS", "300"))
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
 MEDIA_STORAGE_DRIVER = os.getenv("MEDIA_STORAGE_DRIVER", "local").strip().lower()
 MEDIA_S3_BUCKET = os.getenv("MEDIA_S3_BUCKET", "").strip()
@@ -112,6 +130,7 @@ _s3_client: Any | None = None
 boto3: Any | None = None
 BotoCoreError = Exception
 ClientError = Exception
+_local_asr_model: Any | None = None
 
 KNOWN_SAMPLE_VIDEO_METADATA: dict[str, dict[str, Any]] = {
     "BigBuckBunny.mp4": {
@@ -216,6 +235,256 @@ def get_known_sample_video_metadata(video_url: str | None) -> dict[str, Any] | N
 
     return json.loads(json.dumps(profile))
 
+
+def resolve_local_video_path(video_url: str | None) -> Path | None:
+    if not video_url:
+        return None
+
+    parsed = urlparse(video_url)
+    match = re.search(r"/api/video/([^/]+)", parsed.path)
+    if not match:
+        return None
+
+    job_id = match.group(1).strip()
+    if not job_id:
+        return None
+
+    candidates = sorted(path for path in UPLOAD_DIR.glob(f"{job_id}_*") if path.is_file())
+    return candidates[0] if candidates else None
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    content = text.strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+
+    start = content.find("{")
+    end = content.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+
+    try:
+        parsed = json.loads(content[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _get_local_asr_model() -> Any | None:
+    global _local_asr_model
+    if _local_asr_model is not None:
+        return _local_asr_model
+    if WhisperModel is None:
+        return None
+
+    try:
+        _local_asr_model = WhisperModel(
+            LOCAL_ASR_MODEL,
+            device=LOCAL_ASR_DEVICE,
+            compute_type=LOCAL_ASR_COMPUTE_TYPE,
+        )
+        return _local_asr_model
+    except Exception as error:  # pragma: no cover
+        logger.warning("Local ASR model initialization failed: %s", error)
+        return None
+
+
+def _format_transcript_timestamp(value: float) -> str:
+    seconds = max(0, int(round(value)))
+    return format_duration(seconds)
+
+
+def _clean_transcript_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text or "").strip()
+    if cleaned and cleaned[-1] not in ".!?":
+        cleaned = f"{cleaned}."
+    return cleaned
+
+
+async def generate_local_transcript(video_url: str | None = None) -> list[dict[str, str]]:
+    if not ENABLE_LOCAL_ASR_FALLBACK:
+        return []
+
+    video_path = resolve_local_video_path(video_url)
+    if not video_path or not video_path.exists():
+        return []
+
+    loop = asyncio.get_event_loop()
+
+    def run_local_asr() -> list[dict[str, str]]:
+        model = _get_local_asr_model()
+        if model is None:
+            return []
+
+        segments, _ = model.transcribe(
+            str(video_path),
+            beam_size=1,
+            vad_filter=True,
+        )
+
+        transcript: list[dict[str, str]] = []
+        for segment in segments:
+            text = _clean_transcript_text(getattr(segment, "text", ""))
+            if not text:
+                continue
+            timestamp = _format_transcript_timestamp(float(getattr(segment, "start", 0.0)))
+            transcript.append({"timestamp": timestamp, "text": text})
+
+        if not transcript:
+            return []
+
+        max_segments = max(3, LOCAL_ASR_MAX_SEGMENTS)
+        if len(transcript) <= max_segments:
+            return transcript
+
+        step = max(1, len(transcript) // max_segments)
+        return [transcript[index] for index in range(0, len(transcript), step)][:max_segments]
+
+    try:
+        transcript = await asyncio.wait_for(
+            loop.run_in_executor(EXECUTOR, run_local_asr),
+            timeout=LOCAL_ASR_TIMEOUT_SECONDS,
+        )
+        if transcript:
+            logger.info("Generated transcript from local ASR for %s", video_path.name)
+        return transcript
+    except Exception as error:
+        logger.warning("Local ASR transcription failed for %s: %s", video_path, error)
+        return []
+
+
+def _normalize_grounded_transcript(items: Any) -> list[dict[str, str]]:
+    transcript: list[dict[str, str]] = []
+    used_timestamps: set[str] = set()
+    if not isinstance(items, list):
+        return transcript
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        timestamp = str(item.get("timestamp", "")).strip()
+        text = str(item.get("text", "")).strip()
+        if not timestamp or not text or timestamp in used_timestamps:
+            continue
+        used_timestamps.add(timestamp)
+        transcript.append({"timestamp": timestamp, "text": text})
+
+    transcript.sort(key=lambda item: parse_duration_to_seconds(item["timestamp"]))
+    return transcript
+
+
+def _normalize_grounded_key_concepts(items: Any) -> list[dict[str, str]]:
+    concepts: list[dict[str, str]] = []
+    if not isinstance(items, list):
+        return concepts
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", "")).strip()
+        timestamp = str(item.get("timestamp", "")).strip()
+        if not title or not timestamp:
+            continue
+        concepts.append({"title": title, "timestamp": timestamp})
+
+    return concepts[:4]
+
+
+async def generate_grounded_video_metadata(
+    title: str,
+    description: str,
+    duration_seconds: float,
+    video_url: str | None = None,
+) -> dict[str, Any] | None:
+    sample_profile = get_known_sample_video_metadata(video_url)
+    if sample_profile:
+        return {
+            "description": str(sample_profile["description"]),
+            "aiSummary": str(sample_profile["aiSummary"]),
+            "transcript": list(sample_profile["transcript"]),
+            "keyConcepts": list(sample_profile["keyConcepts"]),
+        }
+
+    if not GOOGLE_API_KEY:
+        return None
+
+    local_video_path = resolve_local_video_path(video_url)
+    if not local_video_path or not local_video_path.exists():
+        return None
+
+    prompt = f"""Analyze the uploaded lecture video itself and return valid JSON only.
+
+Title: {title}
+Existing description: {description}
+Approximate duration: {format_duration(duration_seconds) if duration_seconds > 0 else 'unknown'}
+
+Return a JSON object with exactly these keys:
+- description: a better 1-2 sentence lecture overview based on the actual video
+- aiSummary: a concise 2-3 sentence summary based on the actual spoken content
+- transcript: an array of 5 to 7 objects with keys timestamp and text
+- keyConcepts: an array of 3 to 4 objects with keys title and timestamp
+
+Rules:
+- Use only information supported by the video.
+- transcript timestamps must be in MM:SS format.
+- transcript text must be concise and reflect what is said at that point.
+- keyConcept titles should be 2 to 5 words.
+- Output JSON only, with no markdown fences or extra text.
+"""
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        def call_genai() -> str:
+            uploaded_file = genai.upload_file(path=str(local_video_path), display_name=local_video_path.name)
+            try:
+                uploaded_name = getattr(uploaded_file, "name", "")
+                for _ in range(60):
+                    state = getattr(uploaded_file, "state", None)
+                    state_name = str(getattr(state, "name", state or "")).upper()
+                    if not state_name or state_name in {"ACTIVE", "READY", "SUCCEEDED"}:
+                        break
+                    if state_name in {"FAILED", "CANCELLED", "ERROR"}:
+                        raise RuntimeError(f"Gemini file processing failed with state {state_name}")
+                    time.sleep(2)
+                    if uploaded_name:
+                        uploaded_file = genai.get_file(uploaded_name)
+
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                response = model.generate_content([uploaded_file, prompt])
+                return response.text.strip()
+            finally:
+                uploaded_name = getattr(uploaded_file, "name", "")
+                if uploaded_name:
+                    try:
+                        genai.delete_file(uploaded_name)
+                    except Exception:
+                        pass
+
+        raw_response = await asyncio.wait_for(loop.run_in_executor(EXECUTOR, call_genai), timeout=180)
+        parsed = _extract_json_object(raw_response)
+        if not parsed:
+            return None
+
+        transcript = _normalize_grounded_transcript(parsed.get("transcript"))
+        key_concepts = _normalize_grounded_key_concepts(parsed.get("keyConcepts"))
+        grounded_description = str(parsed.get("description", "")).strip()
+        grounded_summary = str(parsed.get("aiSummary", "")).strip()
+
+        if len(transcript) < 3:
+            return None
+
+        return {
+            "description": grounded_description or description,
+            "aiSummary": grounded_summary or f"{title} covers practical concepts with a timestamped transcript for reference.",
+            "transcript": transcript,
+            "keyConcepts": key_concepts if key_concepts else build_key_concepts(title, transcript),
+        }
+    except Exception as error:
+        logger.warning("Video-grounded metadata generation failed for %s: %s", title, error)
+        return None
+
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
@@ -231,7 +500,10 @@ async def lifespan(app: FastAPI):
     app.state.db = client[MONGO_DB_NAME]
     await ensure_db_indexes(app.state.db)
     await seed_demo_lectures(app.state.db)
-    await enrich_existing_lectures(app.state.db)
+    if ENRICH_EXISTING_LECTURES_ON_STARTUP:
+        await enrich_existing_lectures(app.state.db)
+    else:
+        logger.info("Skipping startup lecture enrichment (ENRICH_EXISTING_LECTURES_ON_STARTUP=false)")
     yield
     # shutdown
     client = getattr(app.state, "db_client", None)
@@ -605,11 +877,18 @@ def format_duration(seconds: float) -> str:
 
 
 def _run_subprocess(command: list[str]) -> str:
+    resolved_command = list(command)
+    if resolved_command and resolved_command[0] == "ffmpeg" and imageio_ffmpeg is not None:
+        try:
+            resolved_command[0] = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception as e:  # pragma: no cover
+            logger.warning("bundled ffmpeg resolution failed: %s", e)
+
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        result = subprocess.run(resolved_command, capture_output=True, text=True, check=True)
         return result.stdout.strip()
     except (OSError, subprocess.SubprocessError) as e:
-        logger.warning("subprocess failed %s: %s", command, e)
+        logger.warning("subprocess failed %s: %s", resolved_command, e)
         return ""
 
 
@@ -664,6 +943,42 @@ def extract_duration_seconds(media_source: str) -> float:
         return 0.0
 
 
+def _generate_thumbnail_pyav(file_path: Path, thumbnail_path: Path) -> bool:
+    """Extract a thumbnail frame using PyAV (no system ffmpeg required)."""
+    try:
+        import av  # type: ignore[import-untyped]
+    except ImportError:
+        return False
+    try:
+        thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+        container = av.open(str(file_path))
+        stream = container.streams.video[0]
+        # Seek to ~2 seconds in, fall back to the very first frame
+        target_pts = int(2 / stream.time_base) if stream.time_base else 0
+        try:
+            container.seek(target_pts, stream=stream)
+        except Exception:
+            container.seek(0, stream=stream)
+        stream.codec_context.skip_frame = "NONKEY"
+        frame = None
+        for frame in container.decode(stream):
+            break
+        container.close()
+        if frame is None:
+            return False
+        out_container = av.open(str(thumbnail_path), mode="w")
+        out_stream = out_container.add_stream("mjpeg")
+        out_stream.width = frame.width
+        out_stream.height = frame.height
+        out_stream.pix_fmt = "yuvj420p"
+        out_container.mux(out_stream.encode(frame.reformat(format="yuvj420p")))
+        out_container.close()
+        return thumbnail_path.exists() and thumbnail_path.stat().st_size > 0
+    except Exception as err:
+        logger.warning("PyAV thumbnail extraction failed for %s: %s", file_path, err)
+        return False
+
+
 def generate_thumbnail(file_path: Path, thumbnail_path: Path) -> bool:
     thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
     output = _run_subprocess(
@@ -679,7 +994,108 @@ def generate_thumbnail(file_path: Path, thumbnail_path: Path) -> bool:
             str(thumbnail_path),
         ]
     )
-    return thumbnail_path.exists() and bool(output is not None)
+    if thumbnail_path.exists() and thumbnail_path.stat().st_size > 0:
+        return True
+    # ffmpeg unavailable — fall back to PyAV
+    return _generate_thumbnail_pyav(file_path, thumbnail_path)
+
+
+def build_streamable_video_path(job_id: str) -> Path:
+    return UPLOAD_DIR / f"{job_id}_streamable.mp4"
+
+
+def ensure_streamable_video(file_path: Path, job_id: str) -> Path:
+    if not file_path.exists() or not file_path.is_file():
+        return file_path
+
+    streamable_path = build_streamable_video_path(job_id)
+    if file_path.resolve() == streamable_path.resolve():
+        return file_path
+
+    if streamable_path.exists() and streamable_path.stat().st_mtime >= file_path.stat().st_mtime:
+        return streamable_path
+
+    streamable_path.parent.mkdir(parents=True, exist_ok=True)
+    output = _run_subprocess(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(file_path),
+            "-movflags",
+            "+faststart",
+            "-c",
+            "copy",
+            str(streamable_path),
+        ]
+    )
+
+    if output is not None and streamable_path.exists() and streamable_path.stat().st_size > 0:
+        return streamable_path
+
+    logger.warning("Could not create streamable MP4 for job %s; serving original file", job_id)
+    return file_path
+
+
+def _iter_file_range(file_path: Path, start: int, end: int, chunk_size: int = 1024 * 1024):
+    with file_path.open("rb") as file_handle:
+        file_handle.seek(start)
+        remaining = end - start + 1
+        while remaining > 0:
+            chunk = file_handle.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def build_video_response(file_path: Path, media_type: str, filename: str, range_header: str | None) -> Response:
+    file_size = file_path.stat().st_size
+    common_headers = {
+        "accept-ranges": "bytes",
+        "content-disposition": f'inline; filename="{filename}"',
+    }
+
+    if not range_header:
+        response = FileResponse(path=str(file_path), media_type=media_type, filename=filename)
+        response.headers.update(common_headers)
+        return response
+
+    range_match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
+    if not range_match:
+        raise HTTPException(status_code=416, detail="Invalid Range header")
+
+    start_text, end_text = range_match.groups()
+    if start_text == "" and end_text == "":
+        raise HTTPException(status_code=416, detail="Invalid Range header")
+
+    if start_text == "":
+        length = min(int(end_text), file_size)
+        start = max(file_size - length, 0)
+        end = file_size - 1
+    else:
+        start = int(start_text)
+        end = int(end_text) if end_text else file_size - 1
+
+    if start >= file_size or start < 0:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    end = min(end, file_size - 1)
+    if end < start:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    content_length = end - start + 1
+    headers = {
+        **common_headers,
+        "content-length": str(content_length),
+        "content-range": f"bytes {start}-{end}/{file_size}",
+    }
+    return StreamingResponse(
+        _iter_file_range(file_path, start, end),
+        media_type=media_type,
+        headers=headers,
+        status_code=206,
+    )
 
 
 def _sentence_chunks(text: str) -> list[str]:
@@ -785,18 +1201,165 @@ def _parse_transcript_line(line: str) -> tuple[str, str] | None:
 
 
 def build_key_concepts(title: str, transcript: list[dict[str, str]]) -> list[dict[str, str]]:
-    words = [word for word in re.split(r"\W+", title) if len(word) > 2]
-    base_concepts = words[:3]
-    if not base_concepts:
-        base_concepts = ["Introduction", "Core Idea", "Practical Takeaway"]
+    if transcript:
+        phrase_concepts: list[dict[str, str]] = []
+        seen_titles: set[str] = set()
+        normalized_title = re.sub(r"\s+", " ", title).strip()
+        first_timestamp = str(transcript[0].get("timestamp", "00:00"))
 
+        if normalized_title:
+            seen_titles.add(normalized_title.lower())
+            phrase_concepts.append({"title": normalized_title, "timestamp": first_timestamp})
+
+        priority_patterns = [
+            (r"\bbinary\s+search\b", "Binary Search"),
+            (r"\bsorted\s+array\b", "Sorted Array"),
+            (r"\bsearch\s+space\b", "Search Space Reduction"),
+            (r"\bsingle\s+comparison\b", "Single Comparison"),
+            (r"\brecursive\s+implementation\b", "Recursive Implementation"),
+            (r"\biterative\b", "Iterative Approach"),
+            (r"\brecurse\b", "Iteration Instead of Recursion"),
+            (r"\bbase\s+case\b", "Base Case"),
+        ]
+
+        for pattern, concept_title in priority_patterns:
+            for segment in transcript:
+                text = str(segment.get("text", "")).lower()
+                if not re.search(pattern, text):
+                    continue
+                concept_key = concept_title.lower()
+                if concept_key in seen_titles:
+                    break
+                seen_titles.add(concept_key)
+                phrase_concepts.append(
+                    {
+                        "title": concept_title,
+                        "timestamp": str(segment.get("timestamp", "00:00")),
+                    }
+                )
+                break
+
+        if len(phrase_concepts) >= 3:
+            return phrase_concepts[:4]
+
+        stop_words = {
+            "this", "that", "with", "from", "they", "have", "your", "about", "there", "their",
+            "what", "when", "where", "which", "will", "would", "could", "should", "them", "into",
+            "just", "been", "being", "than", "then", "also", "very", "more", "some", "such",
+            "through", "over", "under", "while", "because", "focus", "example", "concept",
+            "implementation", "recursive", "anymore", "okay", "interview", "coding", "roughly",
+            "halfway", "papers", "compare", "return", "true", "first",
+        }
+        term_counts: dict[str, int] = {}
+        first_term_timestamp: dict[str, str] = {}
+
+        for segment in transcript:
+            timestamp = str(segment.get("timestamp", "00:00"))
+            text = str(segment.get("text", "")).lower()
+            for term in re.findall(r"[a-z][a-z\-]{3,}", text):
+                if term in stop_words:
+                    continue
+                term_counts[term] = term_counts.get(term, 0) + 1
+                first_term_timestamp.setdefault(term, timestamp)
+
+        if term_counts:
+            ranked_terms = sorted(term_counts.items(), key=lambda item: (-item[1], item[0]))[:4]
+            frequency_concepts = [
+                {"title": term.replace("-", " ").title(), "timestamp": first_timestamp.get(term, "00:00")}
+                for term, _ in ranked_terms
+            ]
+            merged = phrase_concepts + frequency_concepts
+            deduped: list[dict[str, str]] = []
+            seen: set[str] = set()
+            for concept in merged:
+                key = str(concept.get("title", "")).lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(concept)
+            if deduped:
+                return deduped[:4]
+
+    words = [word for word in re.split(r"\W+", title) if len(word) > 2]
+    base_concepts = words[:3] if words else ["Introduction", "Core Idea", "Practical Takeaway"]
     concepts: list[dict[str, str]] = []
     for index, word in enumerate(base_concepts):
         concept_title = word.title() if word.lower() not in {"and", "for", "the"} else f"Concept {index + 1}"
         timestamp = transcript[index]["timestamp"] if index < len(transcript) else format_duration(index * 60)
         concepts.append({"title": concept_title, "timestamp": timestamp})
-
     return concepts
+
+
+def build_summary_from_transcript(title: str, description: str, transcript: list[dict[str, str]]) -> str:
+    def normalize_text(text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        cleaned = re.sub(r"^(?:hi|hello)\b[^.!?]{0,140}[.!?]\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^\b(?:so|well|okay|now|then)\b[,\s]*", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip()
+
+    sentence_candidates: list[str] = []
+    for item in transcript:
+        raw = str(item.get("text", "")).strip()
+        if not raw:
+            continue
+        cleaned = normalize_text(raw)
+        if len(cleaned.split()) < 6:
+            continue
+        if cleaned and cleaned not in sentence_candidates:
+            sentence_candidates.append(cleaned)
+
+    if sentence_candidates:
+        lead = sentence_candidates[0]
+        support = sentence_candidates[min(1, len(sentence_candidates) - 1)]
+        takeaway = sentence_candidates[-1]
+        summary = f"{lead} {support} {takeaway}".strip()
+        summary = re.sub(r"\s+", " ", summary)
+        if summary and summary[-1] not in ".!?":
+            summary = f"{summary}."
+        return summary
+
+    fallback_description = description.strip() or "This lecture explains practical concepts through examples and guidance."
+    return f"{title} - {fallback_description}"
+
+
+def build_description_from_transcript(
+    title: str,
+    current_description: str,
+    transcript: list[dict[str, str]],
+) -> str:
+    def normalize_text(text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text).strip()
+        # Remove common spoken introductions that make the About text noisy.
+        cleaned = re.sub(r"^(?:hi|hello)\b[^.!?]{0,120}[.!?]\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"^\b(?:so|well|okay|now)\b[,\s]*", "", cleaned, flags=re.IGNORECASE)
+        return cleaned.strip()
+
+    sentence_candidates: list[str] = []
+    for item in transcript:
+        raw = str(item.get("text", "")).strip()
+        if not raw:
+            continue
+        cleaned = normalize_text(raw)
+        if len(cleaned.split()) < 7:
+            continue
+        if cleaned not in sentence_candidates:
+            sentence_candidates.append(cleaned)
+
+    if sentence_candidates:
+        picked = sentence_candidates[:2]
+        combined = " ".join(picked).strip()
+        normalized = re.sub(r"\s+", " ", combined)
+        if normalized and normalized[-1] not in ".!?":
+            normalized = f"{normalized}."
+        if len(normalized) > 220:
+            normalized = f"{normalized[:217].rstrip()}..."
+        if normalized:
+            return normalized
+
+    fallback = current_description.strip()
+    if fallback:
+        return fallback
+    return f"{title} lecture"
 
 
 async def generate_ai_summary(
@@ -810,20 +1373,24 @@ async def generate_ai_summary(
         return str(sample_profile["aiSummary"])
 
     if not ENABLE_AI_SUMMARY:
-        return f"{title} summary generation is disabled for this environment."
+        return build_summary_from_transcript(title, description, transcript)
 
     if not GOOGLE_API_KEY:
-        return f"{title} covers practical concepts with a timestamped transcript for reference."
+        return build_summary_from_transcript(title, description, transcript)
 
     try:
-        transcript_text = " ".join([seg.get("text", "") for seg in transcript])
-        prompt = f"""You are an expert educational content analyst. Create a concise, engaging 2-3 sentence summary for this lecture.
+        transcript_lines = "\n".join(
+            f"[{seg['timestamp']}] {seg.get('text', '')}"
+            for seg in transcript
+            if seg.get("text", "").strip()
+        )
+        prompt = f"""You are an expert educational content analyst. Create a concise, engaging 2-3 sentence summary for this lecture based on the actual transcript below.
 
 Title: {title}
-Description: {description}
-Transcript excerpt: {transcript_text[:1000]}
+Transcript:
+{transcript_lines[:1200]}
 
-Summary (2-3 sentences, engaging and informative):"""
+Summary (2-3 sentences, engaging and informative, based only on the spoken content above):"""
 
         loop = asyncio.get_event_loop()
         def call_genai():
@@ -832,10 +1399,10 @@ Summary (2-3 sentences, engaging and informative):"""
             return response.text.strip()
         
         result = await asyncio.wait_for(loop.run_in_executor(EXECUTOR, call_genai), timeout=30)
-        return result if result else f"{title} covers practical concepts with a timestamped transcript for reference."
+        return result if result else build_summary_from_transcript(title, description, transcript)
     except Exception as e:
         logger.warning("AI summary generation failed for %s: %s", title, e)
-        return f"{title} covers practical concepts with a timestamped transcript for reference."
+        return build_summary_from_transcript(title, description, transcript)
 
 
 async def generate_ai_transcript(
@@ -847,6 +1414,10 @@ async def generate_ai_transcript(
     sample_profile = get_known_sample_video_metadata(video_url)
     if sample_profile:
         return list(sample_profile["transcript"])
+
+    local_transcript = await generate_local_transcript(video_url)
+    if local_transcript:
+        return local_transcript
 
     if not GOOGLE_API_KEY:
         return build_transcript(title, description, duration_seconds)
@@ -929,18 +1500,34 @@ async def generate_ai_key_concepts(
     if not GOOGLE_API_KEY:
         return build_key_concepts(title, transcript)
 
+    # Build a timestamped transcript block so Gemini picks timestamps from the real speech
+    valid_timestamps = [seg["timestamp"] for seg in transcript if seg.get("timestamp")]
+
+    def _snap_to_nearest(ts: str) -> str:
+        """Replace Gemini's timestamp with the closest real transcript timestamp."""
+        if ts in valid_timestamps:
+            return ts
+        candidate_secs = parse_duration_to_seconds(ts)
+        best = min(valid_timestamps, key=lambda t: abs(parse_duration_to_seconds(t) - candidate_secs), default=ts)
+        return best
+
     try:
-        transcript_text = " ".join([seg.get("text", "") for seg in transcript])
-        prompt = f"""Analyze this lecture and identify 3-4 key concepts/topics that students should focus on.
+        transcript_lines = "\n".join(
+            f"[{seg['timestamp']}] {seg.get('text', '')}"
+            for seg in transcript
+            if seg.get("text", "").strip()
+        )
+        prompt = f"""Analyze this lecture transcript and identify 3-4 key concepts/topics that students should focus on.
 
 Title: {title}
-Transcript: {transcript_text[:800]}
+Timestamped transcript:
+{transcript_lines[:1000]}
 
-For each concept, provide:
-1. A clear, concise concept name (2-4 words)
-2. The most relevant timestamp from the transcript
+For each concept:
+1. Choose a clear, concise name (2-4 words) that reflects the actual spoken content.
+2. Use the EXACT timestamp from the transcript line where this concept is introduced.
 
-Format: [HH:MM:SS or MM:SS] Concept Name
+Format each answer as: [MM:SS] Concept Name
 
 Key Concepts:"""
 
@@ -961,7 +1548,8 @@ Key Concepts:"""
                 timestamp_end = line.index("]")
                 timestamp = line[1:timestamp_end].strip()
                 title_text = line[timestamp_end + 1 :].strip()
-                if timestamp and title_text:
+                if timestamp and title_text and valid_timestamps:
+                    timestamp = _snap_to_nearest(timestamp)
                     concepts.append({"title": title_text, "timestamp": timestamp})
             except (ValueError, IndexError):
                 continue
@@ -1487,7 +2075,8 @@ async def retry_job(
 async def _resolve_media_response(
     job_id: str,
     db: AsyncIOMotorDatabase,
-) -> FileResponse:
+    request: Request | None = None,
+) -> Response:
     job = await db.jobs.find_one({"job_id": job_id})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -1504,28 +2093,58 @@ async def _resolve_media_response(
         return RedirectResponse(url=media_url, status_code=307)
 
     file_path = job.get("file_path")
-    if not file_path or not Path(file_path).exists():
-        raise HTTPException(status_code=404, detail="Video file not found")
+    resolved_path = Path(file_path) if file_path else None
+    if not resolved_path or not resolved_path.exists():
+        filename = str(job.get("filename", "") or "").strip()
+        candidate_paths: list[Path] = []
+
+        if filename:
+            safe_name = Path(filename).name
+            candidate_paths.append(UPLOAD_DIR / f"{job_id}_{safe_name}")
+            candidate_paths.append(UPLOAD_DIR / safe_name)
+
+        candidate_paths.extend(sorted(UPLOAD_DIR.glob(f"{job_id}_*")))
+
+        resolved_path = next(
+            (candidate for candidate in candidate_paths if candidate.exists() and candidate.is_file()),
+            None,
+        )
+        if not resolved_path:
+            raise HTTPException(status_code=404, detail="Video file not found")
+
+        file_path = str(resolved_path)
+        await db.jobs.update_one(
+            {"_id": job["_id"]},
+            {"$set": {"file_path": file_path, "updated_at": utcnow()}},
+        )
+    else:
+        file_path = str(resolved_path)
+
+    streamable_path = ensure_streamable_video(Path(file_path), job_id)
+    file_path = str(streamable_path)
 
     filename = job.get("filename", f"{job_id}.mp4")
     media_type = job.get("content_type") or "video/mp4"
-    return FileResponse(path=file_path, media_type=media_type, filename=filename)
+    range_header = request.headers.get("range") if request is not None else None
+    return build_video_response(Path(file_path), media_type, filename, range_header)
 
 
 @app.get("/media/{job_id}")
 async def get_media_legacy(
     job_id: str,
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
-) -> FileResponse:
-    return await _resolve_media_response(job_id, db)
+) -> Response:
+    return await _resolve_media_response(job_id, db, request)
 
 
 @app.get("/api/media/{job_id}")
 async def get_media(
     job_id: str,
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
-) -> FileResponse:
-    return await _resolve_media_response(job_id, db)
+) -> Response:
+    return await _resolve_media_response(job_id, db, request)
 
 
 @app.post("/api/lectures/{slug}/view")
@@ -1853,9 +2472,20 @@ async def regenerate_ai_transcript(
     duration_seconds = parse_duration_to_seconds(
         str(sample_profile.get("duration")) if sample_profile else str(doc.get("duration", "0:00"))
     )
-    transcript = await generate_ai_transcript(title, description, duration_seconds, video_url)
-    key_concepts = await generate_ai_key_concepts(title, transcript, video_url)
-    ai_summary = await generate_ai_summary(title, description, transcript, video_url)
+    grounded_metadata = await generate_grounded_video_metadata(title, description, duration_seconds, video_url)
+
+    if grounded_metadata:
+        description = str(grounded_metadata.get("description", description) or description)
+        transcript = list(grounded_metadata.get("transcript", []))
+        key_concepts = list(grounded_metadata.get("keyConcepts", []))
+        ai_summary = str(grounded_metadata.get("aiSummary", "") or "")
+    else:
+        transcript = await generate_ai_transcript(title, description, duration_seconds, video_url)
+        key_concepts = await generate_ai_key_concepts(title, transcript, video_url)
+        ai_summary = await generate_ai_summary(title, description, transcript, video_url)
+
+    description = build_description_from_transcript(title, description, transcript)
+
     await db.lectures.update_one(
         {"slug": slug},
         {
@@ -1899,9 +2529,10 @@ async def delete_lecture(
 @app.get("/api/video/{job_id}")
 async def stream_video(
     job_id: str,
+    request: Request,
     db: AsyncIOMotorDatabase = Depends(get_db),
-) -> FileResponse:
-    return await _resolve_media_response(job_id, db)
+) -> Response:
+    return await _resolve_media_response(job_id, db, request)
 
 
 @app.get("/api/video/{job_id}/thumbnail")
@@ -1959,6 +2590,13 @@ async def transcode(job_id: str) -> None:
         media_object_key = str(job_doc.get("media_object_key", "") if job_doc else "")
         media_url = str(job_doc.get("media_url", "") if job_doc else "")
 
+        if file_path and file_path.exists():
+            file_path = ensure_streamable_video(file_path, job_id)
+            await db.jobs.update_one(
+                {"job_id": job_id},
+                {"$set": {"file_path": str(file_path), "updated_at": utcnow()}},
+            )
+
         duration_seconds = extract_duration_seconds(str(file_path)) if file_path and file_path.exists() else 0.0
         duration_formatted = format_duration(duration_seconds) if duration_seconds > 0 else "00:00"
 
@@ -1967,9 +2605,11 @@ async def transcode(job_id: str) -> None:
         if file_path and file_path.exists():
             metadata = extract_video_metadata(file_path)
 
-        transcript = await generate_ai_transcript(title, description, duration_seconds)
-        key_concepts = await generate_ai_key_concepts(title, transcript)
-        ai_summary = await generate_ai_summary(title, description, transcript)
+        video_url = f"/api/video/{job_id}"
+        transcript = await generate_ai_transcript(title, description, duration_seconds, video_url)
+        key_concepts = await generate_ai_key_concepts(title, transcript, video_url)
+        ai_summary = await generate_ai_summary(title, description, transcript, video_url)
+        generated_description = build_description_from_transcript(title, description, transcript)
 
         thumbnail_rel = ""
         thumbnail_path: Path | None = None
@@ -1984,6 +2624,7 @@ async def transcode(job_id: str) -> None:
                     thumbnail_url = upload_file_to_object_storage(thumbnail_path, thumbnail_object_key, "image/jpeg")
 
         update_fields: dict[str, Any] = {
+            "description": generated_description,
             "duration": duration_formatted,
             "image": thumbnail_rel,
             "transcript": transcript,

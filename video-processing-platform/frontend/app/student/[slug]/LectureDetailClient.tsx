@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ArrowRight, Shield, WandSparkles } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import LectureInsights from "./LectureInsights";
 import VideoPlayerWrapper from "./VideoPlayerWrapper";
+import type { VideoPlayerHandle } from "./VideoPlayer";
 import { Lecture } from "../lectures";
 
 export type LectureDetailClientProps = {
@@ -20,24 +21,24 @@ export default function LectureDetailClient({
     videoSrc,
 }: LectureDetailClientProps) {
     const [currentTime, setCurrentTime] = useState(0);
-    const [seekTime, setSeekTime] = useState<number | undefined>(undefined);
+    const playerRef = useRef<VideoPlayerHandle>(null);
 
     const handleSeek = (s: number) => {
-        setSeekTime(s);
+        playerRef.current?.seekTo(s);
     };
 
     return (
         <div className="grid gap-5 lg:grid-cols-3">
             {/* left column video + metadata */}
             <div className="lg:col-span-2">
-                <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-black shadow-sm">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-black shadow-lg">
                     {videoSrc ? (
                         <VideoPlayerWrapper
+                            playerRef={playerRef}
                             src={videoSrc}
                             slug={lecture.slug}
                             duration={lecture.duration}
                             onTimeUpdate={setCurrentTime}
-                            seekTime={seekTime}
                         />
                     ) : (
                         <Image
@@ -51,8 +52,8 @@ export default function LectureDetailClient({
                     )}
                 </div>
 
-                <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
-                    <h1 className="max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-4xl">
+                <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+                    <h1 className="max-w-3xl text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
                         {lecture.title}
                     </h1>
                     {nextLecture ? (

@@ -1,6 +1,8 @@
 "use client";
 
+import { type Ref } from "react";
 import VideoPlayer from "./VideoPlayer";
+import type { VideoPlayerHandle } from "./VideoPlayer";
 
 // purely visual wrapper around the raw video component. Timing state
 // (currentTime/seekTime) is lifted up so a sibling component can
@@ -10,22 +12,22 @@ export default function VideoPlayerWrapper({
     slug,
     duration,
     onTimeUpdate,
-    seekTime,
+    playerRef,
 }: {
     src: string;
     slug: string;
     duration?: string;
     onTimeUpdate?: (seconds: number) => void;
-    seekTime?: number;
+    playerRef?: Ref<VideoPlayerHandle>;
 }) {
     return (
-        <div className="mb-6 overflow-hidden rounded-lg border border-slate-200 shadow-lg">
+        <div className="overflow-hidden">
             <VideoPlayer
+                ref={playerRef}
                 src={src}
                 slug={slug}
                 duration={duration}
                 onTimeUpdate={onTimeUpdate}
-                seekTime={seekTime}
             />
         </div>
     );

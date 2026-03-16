@@ -1,7 +1,7 @@
 export const apiBaseUrl =
   process.env.INTERNAL_API_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:8000";
+  "http://localhost:8001";
 
 // Centralized JSON fetch helper for consistent API error handling.
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

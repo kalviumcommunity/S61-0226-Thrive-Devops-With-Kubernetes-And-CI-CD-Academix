@@ -1,7 +1,6 @@
 "use client";
 
 import { Clock3 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { Lecture } from "./lectures";
@@ -39,7 +38,6 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
 
   const videoSrc = resolveApiUrl(lecture.videoUrl);
   const posterSrc = resolveApiUrl(lecture.image);
-  const shouldAutoPreview = Boolean(videoSrc && !posterSrc);
 
   const handleLoadedMetadata = (duration: number) => {
     if (!Number.isFinite(duration) || duration <= 0) {
@@ -53,25 +51,28 @@ export default function LectureCard({ lecture, userId }: LectureCardProps) {
   return (
     <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
       <div className="relative h-40 w-full">
-        {videoSrc ? (
+        {posterSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={posterSrc}
+            alt={lecture.title}
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+          />
+        ) : videoSrc ? (
           <video
             src={videoSrc}
-            poster={posterSrc ?? undefined}
             preload="metadata"
             muted
             playsInline
-            autoPlay={shouldAutoPreview}
-            loop={shouldAutoPreview}
             className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
             onLoadedMetadata={(event) => handleLoadedMetadata(event.currentTarget.duration)}
           />
         ) : lecture.image ? (
-          <Image
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={lecture.image}
             alt={lecture.title}
-            fill
-            sizes="(max-width: 1280px) 100vw, 400px"
-            className="object-cover transition duration-300 group-hover:scale-[1.02]"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200" />
